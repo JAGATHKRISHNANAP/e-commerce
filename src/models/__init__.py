@@ -5,3 +5,4 @@ from .user import User
 from .cart import CartItem
 
 __all__ = ["Base", "Category", "Product", "User", "CartItem"]
+
