@@ -430,13 +430,69 @@
 
 
 
+# # app.py
+# from fastapi import FastAPI
+# from fastapi.middleware.cors import CORSMiddleware
+# from config.database import engine
+# from src.models import Base
+# from src.api.v1 import categories, products, cart
+# import uvicorn
+
+# # Create tables
+# Base.metadata.create_all(bind=engine)
+
+# def create_app() -> FastAPI:
+#     """Create FastAPI application with all configurations"""
+    
+#     app = FastAPI(
+#         title="E-commerce API with Cart",
+#         version="1.0.0",
+#         description="A comprehensive e-commerce API with product management and shopping cart functionality"
+#     )
+
+#     # CORS middleware
+#     app.add_middleware(
+#         CORSMiddleware,
+#         allow_origins=["http://localhost:3000", "http://localhost:5173"],
+#         allow_credentials=True,
+#         allow_methods=["*"],
+#         allow_headers=["*"],
+#     )
+
+#     # Include API routers
+#     app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
+#     app.include_router(products.router, prefix="/api/v1", tags=["products"])
+#     app.include_router(cart.router, prefix="/api/v1", tags=["cart"])
+
+#     @app.get("/")
+#     async def root():
+#         return {
+#             "message": "E-commerce API",
+#             "version": "1.0.0",
+#             "status": "running"
+#         }
+
+#     @app.get("/health")
+#     async def health_check():
+#         return {"status": "healthy"}
+
+#     return app
+
+# app = create_app()
+
+# if __name__ == "__main__":
+#     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+
+
 # app.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from config.database import engine
 from src.models import Base
 from src.api.v1 import categories, products, cart
 import uvicorn
+import os
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -458,6 +514,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Create uploads directory if it doesn't exist
+    os.makedirs("uploads", exist_ok=True)
+    
+    # Mount static files for serving uploaded images
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
     # Include API routers
     app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
