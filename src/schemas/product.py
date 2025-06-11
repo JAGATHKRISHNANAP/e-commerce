@@ -117,6 +117,42 @@
 
 
 
+# # src/schemas/product.py - Updated with image schemas
+# from pydantic import BaseModel
+# from typing import Optional, List
+# from datetime import datetime
+# from .category import CategoryResponse
+# from .product_image import ProductImageResponse
+
+# class ProductBase(BaseModel):
+#     name: str
+#     description: Optional[str] = None
+#     price: float
+#     category_id: int
+#     stock_quantity: int = 0
+#     storage_capacity: Optional[str] = None
+
+# class ProductCreate(ProductBase):
+#     created_by: str  # Sales user who creates the product
+
+# class ProductResponse(ProductBase):
+#     product_id: int
+#     created_by: str
+#     category: Optional[CategoryResponse] = None
+#     images: List[ProductImageResponse] = []
+    
+#     class Config:
+#         from_attributes = True
+
+# class ProductsListResponse(BaseModel):
+#     products: List[ProductResponse]
+#     total_count: int
+#     page: int
+#     per_page: int
+#     total_pages: int
+
+
+
 # src/schemas/product.py - Updated with image schemas
 from pydantic import BaseModel
 from typing import Optional, List
@@ -138,6 +174,8 @@ class ProductCreate(ProductBase):
 class ProductResponse(ProductBase):
     product_id: int
     created_by: str
+    primary_image_url: Optional[str] = None  # Quick access to primary image
+    primary_image_filename: Optional[str] = None
     category: Optional[CategoryResponse] = None
     images: List[ProductImageResponse] = []
     
