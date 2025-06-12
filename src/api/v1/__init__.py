@@ -1,1 +1,1 @@
-from . import categories, products, cart
+from . import categories, products, cart,auth
