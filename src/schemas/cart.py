@@ -1,32 +1,87 @@
-from pydantic import BaseModel
-from typing import List
+# src/schemas/cart.py
+from pydantic import BaseModel, Field, validator
+from typing import List, Optional
 from datetime import datetime
-from .product import ProductResponse
+from decimal import Decimal
 
 class AddToCartRequest(BaseModel):
-    session_id: str
+    product_id: int = Field(..., gt=0, description="Product ID to add to cart")
+    quantity: int = Field(default=1, gt=0, le=100, description="Quantity to add")
+    
+    @validator('quantity')
+    def validate_quantity(cls, v):
+        if v <= 0:
+            raise ValueError('Quantity must be greater than 0')
+        if v > 100:
+            raise ValueError('Quantity cannot exceed 100')
+        return v
+
+class UpdateCartItemRequest(BaseModel):
+    quantity: int = Field(..., gt=0, le=100, description="New quantity")
+    
+    @validator('quantity')
+    def validate_quantity(cls, v):
+        if v <= 0:
+            raise ValueError('Quantity must be greater than 0')
+        if v > 100:
+            raise ValueError('Quantity cannot exceed 100')
+        return v
+
+class ProductInCart(BaseModel):
     product_id: int
-    quantity: int = 1
-
-class UpdateCartRequest(BaseModel):
-    session_id: str
-    quantity: int
-
-class RemoveFromCartRequest(BaseModel):
-    session_id: str
+    name: str
+    description: Optional[str]
+    price: Decimal
+    price_at_time: Decimal
+    primary_image_url: Optional[str]
+    storage_capacity: Optional[str]
+    stock_quantity: int
+    
+    class Config:
+        from_attributes = True
 
 class CartItemResponse(BaseModel):
     cart_item_id: int
     product_id: int
     quantity: int
+    price_at_time: Decimal
     added_at: datetime
-    product: ProductResponse
-    subtotal: float
+    updated_at: datetime
+    product: ProductInCart
+    subtotal: Decimal
     
     class Config:
         from_attributes = True
 
 class CartResponse(BaseModel):
+    cart_id: int
+    customer_id: int
+    created_at: datetime
+    updated_at: datetime
     items: List[CartItemResponse]
     total_items: int
-    total_amount: float
+    total_quantity: int
+    total_amount: Decimal
+    
+    class Config:
+        from_attributes = True
+
+class CartSummary(BaseModel):
+    total_items: int
+    total_quantity: int
+    total_amount: Decimal
+
+class AddToCartResponse(BaseModel):
+    success: bool
+    message: str
+    cart_item: CartItemResponse
+    cart_summary: CartSummary
+
+class RemoveFromCartResponse(BaseModel):
+    success: bool
+    message: str
+    cart_summary: CartSummary
+
+class ClearCartResponse(BaseModel):
+    success: bool
+    message: str

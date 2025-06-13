@@ -554,7 +554,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config.database import engine
 from src.models import Base
-from src.api.v1 import categories, products, cart, auth
+from src.api.v1 import categories, products,auth,cart
 import uvicorn
 import os
 

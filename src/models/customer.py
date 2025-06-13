@@ -15,6 +15,7 @@ class Customer(Base):
     # Relationships (for future use)
     # orders = relationship("Order", back_populates="customer")
     # cart_items = relationship("CartItem", back_populates="customer")
+    cart = relationship("Cart", back_populates="customer", uselist=False)
 
 # Create indexes
 Index('idx_customers_phone', Customer.customer_ph_no)
