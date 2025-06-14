@@ -125,3 +125,7 @@ async def get_cart_count(
         "total_items": cart_summary.total_items,
         "total_quantity": cart_summary.total_quantity
     }
+
+
+
+

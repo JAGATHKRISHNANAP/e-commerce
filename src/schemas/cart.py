@@ -32,23 +32,22 @@ class ProductInCart(BaseModel):
     name: str
     description: Optional[str]
     price: Decimal
-    price_at_time: Decimal
     primary_image_url: Optional[str]
     storage_capacity: Optional[str]
     stock_quantity: int
+    category_name: Optional[str]  # ✅ Added this field
     
     class Config:
         from_attributes = True
 
 class CartItemResponse(BaseModel):
     cart_item_id: int
-    product_id: int
     quantity: int
     price_at_time: Decimal
     added_at: datetime
     updated_at: datetime
-    product: ProductInCart
     subtotal: Decimal
+    product: ProductInCart  # ✅ Only `product` should contain nested product info
     
     class Config:
         from_attributes = True

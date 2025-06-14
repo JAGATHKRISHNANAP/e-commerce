@@ -318,29 +318,58 @@ class CartService:
             total_amount=total_amount
         )
     
+    # @staticmethod
+    # def _build_cart_item_response(cart_item: CartItem, product: Product) -> CartItemResponse:
+    #     """Build cart item response with product details"""
+    #     product_in_cart = ProductInCart(
+    #         product_id=product.product_id,
+    #         name=product.name,
+    #         description=product.description,
+    #         price=product.price,
+    #         price_at_time=cart_item.price_at_time,
+    #         primary_image_url=product.primary_image_url,
+    #         storage_capacity=product.storage_capacity,
+    #         stock_quantity=product.stock_quantity
+    #     )
+        
+    #     subtotal = Decimal(str(cart_item.quantity)) * cart_item.price_at_time
+        
+    #     return CartItemResponse(
+    #         cart_item_id=cart_item.cart_item_id,
+    #         product_id=cart_item.product_id,
+    #         quantity=cart_item.quantity,
+    #         price_at_time=cart_item.price_at_time,
+    #         added_at=cart_item.added_at,
+    #         updated_at=cart_item.updated_at,
+    #         product=product_in_cart,
+    #         subtotal=subtotal
+    #     )
+
+
     @staticmethod
     def _build_cart_item_response(cart_item: CartItem, product: Product) -> CartItemResponse:
-        """Build cart item response with product details"""
-        product_in_cart = ProductInCart(
-            product_id=product.product_id,
-            name=product.name,
-            description=product.description,
-            price=product.price,
-            price_at_time=cart_item.price_at_time,
-            primary_image_url=product.primary_image_url,
-            storage_capacity=product.storage_capacity,
-            stock_quantity=product.stock_quantity
-        )
-        
-        subtotal = Decimal(str(cart_item.quantity)) * cart_item.price_at_time
-        
+        subtotal = cart_item.quantity * cart_item.price_at_time
+
+        produc_data=ProductInCart(
+                product_id=product.product_id,
+                name=product.name,
+                description=product.description,
+                price=product.price,
+                stock_quantity=product.stock_quantity,
+                storage_capacity=product.storage_capacity,
+                primary_image_url=product.primary_image_url,
+                primary_image_filename=product.primary_image_filename,
+                category_name=product.category.name if product.category else None
+            )
+
         return CartItemResponse(
             cart_item_id=cart_item.cart_item_id,
-            product_id=cart_item.product_id,
             quantity=cart_item.quantity,
             price_at_time=cart_item.price_at_time,
+            subtotal=subtotal,
             added_at=cart_item.added_at,
             updated_at=cart_item.updated_at,
-            product=product_in_cart,
-            subtotal=subtotal
+            product=produc_data
+
         )
+
