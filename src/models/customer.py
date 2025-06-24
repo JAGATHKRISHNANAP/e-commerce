@@ -17,5 +17,8 @@ class Customer(Base):
     # cart_items = relationship("CartItem", back_populates="customer")
     cart = relationship("Cart", back_populates="customer", uselist=False)
 
+    addresses = relationship("CustomerAddress", back_populates="customer", cascade="all, delete-orphan")
+    orders = relationship("Order", back_populates="customer")
+
 # Create indexes
 Index('idx_customers_phone', Customer.customer_ph_no)
