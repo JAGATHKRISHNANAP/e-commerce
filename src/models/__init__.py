@@ -7,7 +7,8 @@ from .otp import OTP
 from .customer import Customer
 from .jagath import Jagath
 from .address import CustomerAddress
+from .vendor import Vendor
 # from
 
-__all__ = ["Base", "Category", "Product","OTP","Customer", "Jagath","Cart", "CartItem","CustomerAddress"]
+__all__ = ["Base", "Category", "Product","OTP","Customer", "Jagath","Cart", "CartItem","CustomerAddress", "Vendor"]
 

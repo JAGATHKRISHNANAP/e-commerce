@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 from config.database import get_db
-from src.schemas.auth import (
+from src.schemas.vendor_auth import (
     SendOTPRequest, SendOTPResponse,
     VerifyOTPRequest, AuthResponse,
     CompleteRegistrationRequest
 )
-from src.services.auth_service import AuthService
-from src.models.customer import Customer
+from src.services.auth_vendor_service import AuthVendorService
+from src.models.vendor import Vendor as Customer
 
 router = APIRouter()
 
@@ -46,10 +46,10 @@ def get_current_user(
             )
         
         # Verify token
-        payload = AuthService.verify_token(token)
-        customer_id = payload.get("sub")
+        payload = AuthVendorService.verify_token(token)
+        vendor_id = payload.get("sub")
         
-        if not customer_id:
+        if not vendor_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token payload",
@@ -58,7 +58,7 @@ def get_current_user(
         
         # Get customer from database
         customer = db.query(Customer).filter(
-            Customer.customer_id == int(customer_id)
+            Customer.vendor_id == int(vendor_id)
         ).first()
         
         if not customer:
@@ -90,7 +90,7 @@ async def send_otp(
     For testing purposes, the OTP is always '123456'.
     In production, this would integrate with an SMS service.
     """
-    return AuthService.send_otp(request, db)
+    return AuthVendorService.send_otp(request, db)
 
 @router.post("/auth/verify-otp", response_model=AuthResponse)
 async def verify_otp(
@@ -103,7 +103,7 @@ async def verify_otp(
     If the phone number is new, a customer record is created without a name.
     The frontend should check is_new_user flag and prompt for name if true.
     """
-    return AuthService.verify_otp(request, db)
+    return AuthVendorService.verify_otp(request, db)
 
 @router.post("/auth/complete-registration")
 async def complete_registration(
@@ -117,9 +117,9 @@ async def complete_registration(
     This endpoint is called after OTP verification for new users.
     Requires authentication token from verify-otp response.
     """
-    return AuthService.complete_registration(
+    return AuthVendorService.complete_registration(
         request, 
-        current_user.customer_id, 
+        current_user.vendor_id, 
         db
     )
 
@@ -133,12 +133,12 @@ async def get_current_user_info(
     Requires valid JWT token in Authorization header.
     """
     return {
-        "customer_id": current_user.customer_id,
-        "phone_number": current_user.customer_ph_no,
-        "name": current_user.customer_name,
+        "vendor_id": current_user.vendor_id,
+        "phone_number": current_user.vendor_ph_no,
+        "name": current_user.vendor_name,
         "is_verified": True,
         "created_at": current_user.date_of_registration.isoformat(),
-        "is_profile_complete": current_user.customer_name is not None
+        "is_profile_complete": current_user.vendor_name is not None
     }
 
 @router.post("/auth/logout")
