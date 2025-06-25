@@ -1,5 +1,5 @@
 # src/schemas/auth.py
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator,EmailStr
 from typing import Optional
 from datetime import datetime
 import re
@@ -41,6 +41,22 @@ class CompleteRegistrationRequest(BaseModel):
         if not re.match(r"^[a-zA-Z\s\-']+$", v):
             raise ValueError('Name can only contain letters, spaces, hyphens, and apostrophes')
         return v.strip()
+
+class CompleteRegistrationForm(BaseModel):
+    phone_number: str = Field(..., min_length=10, max_length=15)
+    name: str = Field(..., min_length=2, max_length=255)
+    email: Optional[EmailStr]
+    aadhar_number: str = Field(..., min_length=12, max_length=12)
+    personal_address: str
+    business_name: str
+    business_type: str
+    gst_number: Optional[str]
+    business_address: str
+    account_holder_name: str
+    account_number: str
+    ifsc_code: str
+
+
 
 class AuthResponse(BaseModel):
     success: bool

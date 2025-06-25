@@ -674,6 +674,7 @@ def create_app() -> FastAPI:
     
     # Mount static files for serving uploaded images
     app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+    app.mount("/media", StaticFiles(directory="media"), name="media")
 
     # Include API routers
     app.include_router(vender_auth.router, prefix="/api/vendor", tags=["vender_auth"])

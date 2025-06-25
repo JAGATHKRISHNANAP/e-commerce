@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 import secrets
 import jwt
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status,UploadFile
 from src.models.vendor import Vendor as Customer
 from src.models.otp import OTP
 from src.schemas.vendor_auth import (
@@ -14,6 +14,7 @@ from src.schemas.vendor_auth import (
 )
 import hashlib
 import os
+import traceback
 
 # JWT settings (move to config in production)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
@@ -137,12 +138,31 @@ class AuthVendorService:
             
             # Prepare user data
             user_data = {
-                "vendor_id": customer.vendor_id,
-                "phone_number": customer.vendor_ph_no,
-                "name": customer.vendor_name,
-                "is_verified": True,
-                "created_at": customer.date_of_registration.isoformat(),
-                "is_profile_complete": customer.vendor_name is not None
+                # "vendor_id": customer.vendor_id,
+                # "phone_number": customer.vendor_ph_no,
+                # "name": customer.vendor_name,
+                # "is_verified": True,
+                # "created_at": customer.date_of_registration.isoformat(),
+                # "is_profile_complete": customer.vendor_name is not None
+
+                    "vendor_id": customer.vendor_id,
+                    "phone_number": customer.vendor_ph_no,
+                    "name": customer.vendor_name,
+                    "email": customer.vendor_email,
+                    "aadhar_number": customer.aadhar_number,
+                    "personal_address": customer.personal_address,
+                    "business_name": customer.business_name,
+                    "business_type": customer.business_type,
+                    "gst_number": customer.gst_number,
+                    "business_address": customer.business_address,
+                    "account_holder_name": customer.account_holder_name,
+                    "account_number": customer.account_number,
+                    "ifsc_code": customer.ifsc_code,
+                    "vendor_photo_path": customer.vendor_photo_path,
+                    "is_verified": True,
+                    "is_profile_complete": customer.vendor_name is not None,
+                    "created_at": customer.date_of_registration.isoformat()
+
             }
             
             return AuthResponse(
@@ -165,35 +185,97 @@ class AuthVendorService:
                 detail=f"Failed to verify OTP: {str(e)}"
             )
     
+    # @staticmethod
+    # def complete_registration(
+    #     request: CompleteRegistrationRequest, 
+    #     vendor_id: int, 
+    #     db: Session
+    # ) -> Dict[str, Any]:
+    #     """Complete registration by adding customer name"""
+    #     try:
+    #         customer = db.query(Customer).filter(
+    #             Customer.vendor_id == vendor_id
+    #         ).first()
+            
+    #         if not customer:
+    #             raise HTTPException(
+    #                 status_code=status.HTTP_404_NOT_FOUND,
+    #                 detail="Customer not found"
+    #             )
+            
+    #         if customer.vendor_ph_no != request.phone_number:
+    #             raise HTTPException(
+    #                 status_code=status.HTTP_400_BAD_REQUEST,
+    #                 detail="Phone number mismatch"
+    #             )
+            
+    #         # Update customer name
+    #         customer.vendor_name = request.name
+    #         db.commit()
+    #         db.refresh(customer)
+            
+    #         return {
+    #             "success": True,
+    #             "message": "Registration completed successfully",
+    #             "user": {
+    #                 "vendor_id": customer.vendor_id,
+    #                 "phone_number": customer.vendor_ph_no,
+    #                 "name": customer.vendor_name,
+    #                 "is_verified": True,
+    #                 "created_at": customer.date_of_registration.isoformat(),
+    #                 "is_profile_complete": True
+    #             }
+    #         }
+            
+    #     except HTTPException:
+    #         raise
+    #     except Exception as e:
+    #         db.rollback()
+    #         raise HTTPException(
+    #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #             detail=f"Failed to complete registration: {str(e)}"
+    #         )
     @staticmethod
-    def complete_registration(
-        request: CompleteRegistrationRequest, 
-        vendor_id: int, 
-        db: Session
-    ) -> Dict[str, Any]:
-        """Complete registration by adding customer name"""
+    def complete_registration(data: dict, vendor_id: int, db: Session, vendor_photo: Optional[UploadFile]) -> Dict[str, Any]:
+        from pathlib import Path
+        import shutil
+
         try:
-            customer = db.query(Customer).filter(
-                Customer.vendor_id == vendor_id
-            ).first()
-            
+            customer = db.query(Customer).filter(Customer.vendor_id == vendor_id).first()
+
             if not customer:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Customer not found"
-                )
-            
-            if customer.vendor_ph_no != request.phone_number:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Phone number mismatch"
-                )
-            
-            # Update customer name
-            customer.vendor_name = request.name
+                raise HTTPException(status_code=404, detail="Customer not found")
+
+            if customer.vendor_ph_no != data["phone_number"]:
+                raise HTTPException(status_code=400, detail="Phone number mismatch")
+
+            # Update fields
+            customer.vendor_name = data["name"]
+            customer.vendor_email = data.get("email")
+            customer.aadhar_number = data["aadhar_number"]
+            customer.personal_address = data["personal_address"]
+            customer.business_name = data["business_name"]
+            customer.business_type = data["business_type"]
+            customer.gst_number = data.get("gst_number")
+            customer.business_address = data["business_address"]
+            customer.account_holder_name = data["account_holder_name"]
+            customer.account_number = data["account_number"]
+            customer.ifsc_code = data["ifsc_code"]
+
+            # Save vendor photo
+            if vendor_photo:
+                vendor_dir = Path(f"media/vendor_photos/{vendor_id}")
+                vendor_dir.mkdir(parents=True, exist_ok=True)
+
+                file_path = vendor_dir / vendor_photo.filename.replace(" ", "_")
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(vendor_photo.file, buffer)
+
+                customer.vendor_photo_path = str(file_path)
+
             db.commit()
             db.refresh(customer)
-            
+
             return {
                 "success": True,
                 "message": "Registration completed successfully",
@@ -201,20 +283,97 @@ class AuthVendorService:
                     "vendor_id": customer.vendor_id,
                     "phone_number": customer.vendor_ph_no,
                     "name": customer.vendor_name,
+                    "email": customer.vendor_email,
                     "is_verified": True,
                     "created_at": customer.date_of_registration.isoformat(),
+                    "photo_url": customer.vendor_photo_path,
                     "is_profile_complete": True
                 }
             }
-            
-        except HTTPException:
-            raise
+
         except Exception as e:
             db.rollback()
+            traceback.print_exc()  # Add this to print error details to the console
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=500,
                 detail=f"Failed to complete registration: {str(e)}"
             )
+
+
+    
+# @staticmethod
+# def complete_registration(request: CompleteRegistrationRequest,data: dict, vendor_id: int, db: Session) -> Dict[str, Any]:
+#     """Complete full vendor registration and persist all fields."""
+#     try:
+#         customer = db.query(Customer).filter(Customer.vendor_id == vendor_id).first()
+
+#         if not customer:
+#             raise HTTPException(status_code=404, detail="Customer not found")
+
+#         if customer.vendor_ph_no != data["phone_number"]:
+#             raise HTTPException(status_code=400, detail="Phone number mismatch")
+
+#         # Update fields from form
+#         customer.vendor_name = data["name"]
+#         customer.vendor_email = data.get("email")
+#         customer.aadhar_number = data["aadhar_number"]
+#         customer.personal_address = data["personal_address"]
+#         customer.business_name = data["business_name"]
+#         customer.business_type = data["business_type"]
+#         customer.gst_number = data.get("gst_number")
+#         customer.business_address = data["business_address"]
+#         customer.account_holder_name = data["account_holder_name"]
+#         customer.account_number = data["account_number"]
+#         customer.ifsc_code = data["ifsc_code"]
+
+#         # Save profile photo if present
+#         if data.get("vendor_photo"):
+#             file = data["vendor_photo"]
+#             filename = f"{customer.vendor_id}_{file.filename.replace(' ', '_')}"
+#             file_path = f"media/vendor_photos/{filename}"
+
+#             # Ensure directory exists
+#             os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+#             with open(file_path, "wb") as f:
+#                 f.write(file.file.read())
+
+#             customer.vendor_photo_path = file_path
+
+#         db.commit()
+#         db.refresh(customer)
+
+#         return {
+#             "success": True,
+#             "message": "Registration completed successfully",
+#             "user": {
+#                 "vendor_id": customer.vendor_id,
+#                 "phone_number": customer.vendor_ph_no,
+#                 "name": customer.vendor_name,
+#                 "email": customer.vendor_email,
+#                 "is_verified": True,
+#                 "is_profile_complete": True,
+#                 "created_at": customer.date_of_registration.isoformat(),
+#                 "photo_url": customer.vendor_photo_path  # or construct full URL
+#             }
+#         }
+
+#     except Exception as e:
+#         db.rollback()
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to complete registration: {str(e)}"
+#         )
+
+
+
+
+
+
+
+
+
+
     
     @staticmethod
     def create_access_token(data: dict) -> str:
