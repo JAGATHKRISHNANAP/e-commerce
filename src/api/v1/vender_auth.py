@@ -126,13 +126,62 @@ async def verify_otp(
 #     )
 
 
+# @router.post("/auth/complete-registration")
+# async def complete_registration(
+#     phone_number: str = Form(...),
+#     name: str = Form(...),
+#     email: Optional[str] = Form(None),
+#     aadhar_number: str = Form(...),
+#     personal_address: str = Form(...),
+#     business_name: str = Form(...),
+#     business_type: str = Form(...),
+#     gst_number: Optional[str] = Form(None),
+#     business_address: str = Form(...),
+#     account_holder_name: str = Form(...),
+#     account_number: str = Form(...),
+#     ifsc_code: str = Form(...),
+#     vendor_photo: UploadFile = File(None),
+
+#     current_user: Customer = Depends(get_current_user),
+#     db: Session = Depends(get_db)
+# ):
+#     # Validate form fields using Pydantic
+#     form_data = CompleteRegistrationForm(
+#         phone_number=phone_number,
+#         name=name,
+#         email=email,
+#         aadhar_number=aadhar_number,
+#         personal_address=personal_address,
+#         business_name=business_name,
+#         business_type=business_type,
+#         gst_number=gst_number,
+#         business_address=business_address,
+#         account_holder_name=account_holder_name,
+#         account_number=account_number,
+#         ifsc_code=ifsc_code
+#     )
+
+#     return AuthVendorService.complete_registration(
+#         data=form_data.dict(),
+#         vendor_id=current_user.vendor_id,
+#         db=db,
+#         vendor_photo=vendor_photo
+#     )
+
+
 @router.post("/auth/complete-registration")
 async def complete_registration(
     phone_number: str = Form(...),
     name: str = Form(...),
     email: Optional[str] = Form(None),
     aadhar_number: str = Form(...),
-    personal_address: str = Form(...),
+
+    address_line1: str = Form(...),
+    address_line2: Optional[str] = Form(""),
+    district: str = Form(...),
+    state: str = Form(...),
+    pincode: str = Form(...),
+
     business_name: str = Form(...),
     business_type: str = Form(...),
     gst_number: Optional[str] = Form(None),
@@ -145,13 +194,16 @@ async def complete_registration(
     current_user: Customer = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Validate form fields using Pydantic
     form_data = CompleteRegistrationForm(
         phone_number=phone_number,
         name=name,
         email=email,
         aadhar_number=aadhar_number,
-        personal_address=personal_address,
+        address_line1=address_line1,
+        address_line2=address_line2,
+        district=district,
+        state=state,
+        pincode=pincode,
         business_name=business_name,
         business_type=business_type,
         gst_number=gst_number,
@@ -167,8 +219,6 @@ async def complete_registration(
         db=db,
         vendor_photo=vendor_photo
     )
-
-
 # @router.get("/auth/me")
 # async def get_current_user_info(
 #     current_user: Customer = Depends(get_current_user)

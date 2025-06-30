@@ -150,7 +150,7 @@ class AuthVendorService:
                     "name": customer.vendor_name,
                     "email": customer.vendor_email,
                     "aadhar_number": customer.aadhar_number,
-                    "personal_address": customer.personal_address,
+                    # "personal_address": customer.personal_address,
                     "business_name": customer.business_name,
                     "business_type": customer.business_type,
                     "gst_number": customer.gst_number,
@@ -235,10 +235,13 @@ class AuthVendorService:
     #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     #             detail=f"Failed to complete registration: {str(e)}"
     #         )
+
+
     @staticmethod
     def complete_registration(data: dict, vendor_id: int, db: Session, vendor_photo: Optional[UploadFile]) -> Dict[str, Any]:
         from pathlib import Path
         import shutil
+        import traceback  # Make sure this is imported
 
         try:
             customer = db.query(Customer).filter(Customer.vendor_id == vendor_id).first()
@@ -253,7 +256,14 @@ class AuthVendorService:
             customer.vendor_name = data["name"]
             customer.vendor_email = data.get("email")
             customer.aadhar_number = data["aadhar_number"]
-            customer.personal_address = data["personal_address"]
+
+            # Updated Address Fields
+            customer.address_line1 = data["address_line1"]
+            customer.address_line2 = data.get("address_line2", "")
+            customer.district = data["district"]
+            customer.state = data["state"]
+            customer.pincode = data["pincode"]
+
             customer.business_name = data["business_name"]
             customer.business_type = data["business_type"]
             customer.gst_number = data.get("gst_number")
@@ -293,11 +303,75 @@ class AuthVendorService:
 
         except Exception as e:
             db.rollback()
-            traceback.print_exc()  # Add this to print error details to the console
+            traceback.print_exc()
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to complete registration: {str(e)}"
             )
+
+    # @staticmethod
+    # def complete_registration(data: dict, vendor_id: int, db: Session, vendor_photo: Optional[UploadFile]) -> Dict[str, Any]:
+    #     from pathlib import Path
+    #     import shutil
+
+    #     try:
+    #         customer = db.query(Customer).filter(Customer.vendor_id == vendor_id).first()
+
+    #         if not customer:
+    #             raise HTTPException(status_code=404, detail="Customer not found")
+
+    #         if customer.vendor_ph_no != data["phone_number"]:
+    #             raise HTTPException(status_code=400, detail="Phone number mismatch")
+
+    #         # Update fields
+    #         customer.vendor_name = data["name"]
+    #         customer.vendor_email = data.get("email")
+    #         customer.aadhar_number = data["aadhar_number"]
+    #         customer.personal_address = data["personal_address"]
+    #         customer.business_name = data["business_name"]
+    #         customer.business_type = data["business_type"]
+    #         customer.gst_number = data.get("gst_number")
+    #         customer.business_address = data["business_address"]
+    #         customer.account_holder_name = data["account_holder_name"]
+    #         customer.account_number = data["account_number"]
+    #         customer.ifsc_code = data["ifsc_code"]
+
+    #         # Save vendor photo
+    #         if vendor_photo:
+    #             vendor_dir = Path(f"media/vendor_photos/{vendor_id}")
+    #             vendor_dir.mkdir(parents=True, exist_ok=True)
+
+    #             file_path = vendor_dir / vendor_photo.filename.replace(" ", "_")
+    #             with open(file_path, "wb") as buffer:
+    #                 shutil.copyfileobj(vendor_photo.file, buffer)
+
+    #             customer.vendor_photo_path = str(file_path)
+
+    #         db.commit()
+    #         db.refresh(customer)
+
+    #         return {
+    #             "success": True,
+    #             "message": "Registration completed successfully",
+    #             "user": {
+    #                 "vendor_id": customer.vendor_id,
+    #                 "phone_number": customer.vendor_ph_no,
+    #                 "name": customer.vendor_name,
+    #                 "email": customer.vendor_email,
+    #                 "is_verified": True,
+    #                 "created_at": customer.date_of_registration.isoformat(),
+    #                 "photo_url": customer.vendor_photo_path,
+    #                 "is_profile_complete": True
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         db.rollback()
+    #         traceback.print_exc()  # Add this to print error details to the console
+    #         raise HTTPException(
+    #             status_code=500,
+    #             detail=f"Failed to complete registration: {str(e)}"
+    #         )
 
 
     
