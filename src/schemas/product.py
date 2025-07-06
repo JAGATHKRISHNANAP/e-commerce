@@ -1,41 +1,3 @@
-# # src/schemas/product.py
-# from pydantic import BaseModel
-# from typing import Optional, List
-# from .category import CategoryResponse
-
-# class ProductBase(BaseModel):
-#     name: str
-#     description: Optional[str] = None
-#     price: float
-#     category_id: int
-#     stock_quantity: int = 0
-#     image_url: Optional[str] = None
-#     storage_capacity: Optional[str] = None
-
-# class ProductCreate(ProductBase):
-#     pass
-
-# class ProductResponse(ProductBase):
-#     product_id: int
-#     category: Optional[CategoryResponse] = None
-    
-#     class Config:
-#         from_attributes = True
-
-# class ProductsListResponse(BaseModel):
-#     products: List[ProductResponse]
-#     total_count: int
-#     page: int
-#     per_page: int
-#     total_pages: int
-
-
-
-
-
-
-
-
 # # src/schemas/product.py - Updated with image schemas
 # from pydantic import BaseModel
 # from typing import Optional, List
@@ -61,7 +23,7 @@
 #     primary_image_filename: Optional[str] = None
 #     category: Optional[CategoryResponse] = None
 #     images: List[ProductImageResponse] = []
-
+    
 #     class Config:
 #         from_attributes = True
 
@@ -72,78 +34,84 @@
 #     per_page: int
 #     total_pages: int
 
-# # src/schemas/product_image.py
-# from pydantic import BaseModel
-# from typing import Optional
+
+
+
+
+
+
+
+
+# # src/schemas/product.py - Fixed and simplified
+# from pydantic import BaseModel, Field, validator
+# from typing import Dict, Any, Optional, List, TYPE_CHECKING
 # from datetime import datetime
 
-# class ProductImageBase(BaseModel):
-#     image_filename: str
-#     image_url: str
-#     alt_text: Optional[str] = None
-#     is_primary: bool = False
-#     display_order: int = 0
-#     uploaded_by: str
-
-# class ProductImageCreate(ProductImageBase):
-#     product_id: int
-#     image_path: str
-#     file_size: Optional[int] = None
-#     mime_type: Optional[str] = None
-
-# class ProductImageUpdate(BaseModel):
-#     alt_text: Optional[str] = None
-#     is_primary: Optional[bool] = None
-#     display_order: Optional[int] = None
-
-# class ProductImageResponse(ProductImageBase):
-#     image_id: int
-#     product_id: int
-#     image_path: str
-#     file_size: Optional[int] = None
-#     mime_type: Optional[str] = None
-#     created_at: datetime
-#     updated_at: datetime
-
-#     class Config:
-#         from_attributes = True
-
-# class ProductImageListResponse(BaseModel):
-#     product_id: int
-#     product_name: str
-#     total_images: int
-#     images: list[ProductImageResponse]
-
-
-
-
-# # src/schemas/product.py - Updated with image schemas
-# from pydantic import BaseModel
-# from typing import Optional, List
-# from datetime import datetime
-# from .category import CategoryResponse
-# from .product_image import ProductImageResponse
+# # Import only for type checking
+# if TYPE_CHECKING:
+#     from .category import CategoryResponse
+#     from .subcategory import SubcategoryResponse
 
 # class ProductBase(BaseModel):
-#     name: str
+#     name: str = Field(..., min_length=1, max_length=255)
 #     description: Optional[str] = None
-#     price: float
-#     category_id: int
-#     stock_quantity: int = 0
-#     storage_capacity: Optional[str] = None
+#     specifications: Dict[str, Any] = Field(default_factory=dict)
+#     base_price: int = Field(..., gt=0)  # Price in cents
+#     stock_quantity: int = Field(default=0, ge=0)
+#     sku: Optional[str] = Field(None, max_length=100)
+#     is_active: bool = True
 
 # class ProductCreate(ProductBase):
-#     created_by: str  # Sales user who creates the product
+#     category_id: int
+#     subcategory_id: int
+#     created_by: str = Field(..., min_length=1, max_length=100)
+
+# class ProductUpdate(BaseModel):
+#     name: Optional[str] = Field(None, min_length=1, max_length=255)
+#     description: Optional[str] = None
+#     specifications: Optional[Dict[str, Any]] = None
+#     base_price: Optional[int] = Field(None, gt=0)
+#     stock_quantity: Optional[int] = Field(None, ge=0)
+#     sku: Optional[str] = Field(None, max_length=100)
+#     is_active: Optional[bool] = None
 
 # class ProductResponse(ProductBase):
 #     product_id: int
+#     category_id: int
+#     subcategory_id: int
+#     calculated_price: int  # Final price after applying rules
+#     primary_image_url: Optional[str] = None
+#     primary_image_filename: Optional[str] = None
 #     created_by: str
-#     category: Optional[CategoryResponse] = None
-#     images: List[ProductImageResponse] = []
+#     created_at: datetime
+#     updated_at: datetime
+    
+#     # These will be populated by the API if needed
+#     category: Optional[Dict[str, Any]] = None
+#     subcategory: Optional[Dict[str, Any]] = None
     
 #     class Config:
 #         from_attributes = True
 
+# class ProductListResponse(BaseModel):
+#     products: List[ProductResponse]
+#     total_count: int
+#     page: int
+#     per_page: int
+#     total_pages: int
+
+# class PriceCalculationRequest(BaseModel):
+#     subcategory_id: int
+#     specifications: Dict[str, Any]
+#     base_price: Optional[int] = None
+
+# class PriceCalculationResponse(BaseModel):
+#     base_price: int
+#     calculated_price: int
+#     applied_rules: List[Dict[str, Any]] = []
+#     price_breakdown: Dict[str, int] = {}
+
+# # Keep your original product schemas for backward compatibility
 # class ProductsListResponse(BaseModel):
 #     products: List[ProductResponse]
 #     total_count: int
@@ -153,38 +121,93 @@
 
 
 
-# src/schemas/product.py - Updated with image schemas
-from pydantic import BaseModel
-from typing import Optional, List
+
+
+# src/schemas/product.py - Fixed for Pydantic v2
+from pydantic import BaseModel, Field, field_validator
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
-from .category import CategoryResponse
 from .product_image import ProductImageResponse
 
+# Import only for type checking
+if TYPE_CHECKING:
+    from .category import CategoryResponse
+    from .subcategory import SubcategoryResponse
+
 class ProductBase(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    price: float
-    category_id: int
-    stock_quantity: int = 0
-    storage_capacity: Optional[str] = None
+    specifications: Dict[str, Any] = Field(default_factory=dict)
+    base_price: int = Field(..., gt=0)  # Price in cents
+    stock_quantity: int = Field(default=0, ge=0)
+    sku: Optional[str] = Field(None, max_length=100)
+    is_active: bool = True
 
 class ProductCreate(ProductBase):
-    created_by: str  # Sales user who creates the product
+    category_id: int
+    subcategory_id: int
+    created_by: str = Field(..., min_length=1, max_length=100)
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    specifications: Optional[Dict[str, Any]] = None
+    base_price: Optional[int] = Field(None, gt=0)
+    stock_quantity: Optional[int] = Field(None, ge=0)
+    sku: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
 
 class ProductResponse(ProductBase):
     product_id: int
-    created_by: str
-    primary_image_url: Optional[str] = None  # Quick access to primary image
+    category_id: int
+    subcategory_id: int
+    calculated_price: int  # Final price after applying rules
+    primary_image_url: Optional[str] = None
     primary_image_filename: Optional[str] = None
-    category: Optional[CategoryResponse] = None
-    images: List[ProductImageResponse] = []
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
     
+    # These will be populated by the API if needed
+    category: Optional[Dict[str, Any]] = None
+    subcategory: Optional[Dict[str, Any]] = None
+    
+    images: List[ProductImageResponse] = []
     class Config:
         from_attributes = True
 
-class ProductsListResponse(BaseModel):
+class ProductListResponse(BaseModel):
     products: List[ProductResponse]
     total_count: int
     page: int
     per_page: int
     total_pages: int
+
+# Pricing-related schemas
+class PriceCalculationRequest(BaseModel):
+    subcategory_id: int
+    specifications: Dict[str, Any]
+    base_price: int = Field(..., gt=0)  # Made required for consistency
+
+    @field_validator('specifications')
+    @classmethod
+    def validate_specifications(cls, v):
+        if not isinstance(v, dict):
+            raise ValueError('specifications must be a dictionary')
+        return v
+
+class AppliedRule(BaseModel):
+    rule_id: int
+    rule_name: Optional[str] = None
+    modifier_type: str
+    modifier_value: int
+    conditions_matched: Dict[str, Any]
+
+class PriceCalculationResponse(BaseModel):
+    base_price: int
+    calculated_price: int
+    applied_rules: List[AppliedRule] = []
+    price_breakdown: Dict[str, int] = Field(default_factory=dict)
+
+# Keep backward compatibility alias
+ProductsListResponse = ProductListResponse

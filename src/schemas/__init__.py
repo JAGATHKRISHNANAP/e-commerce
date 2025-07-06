@@ -14,6 +14,10 @@ from .cart import (
     CartItemResponse
 )
 
+from .specification_template import (
+    SpecificationTemplateResponse,SpecificationTemplateCreate, SpecificationTemplateUpdate
+)
+
 __all__ = [
     "CategoryResponse", 
     "CategoryCreate",
@@ -29,5 +33,10 @@ __all__ = [
     "AddToCartRequest",
     "UpdateCartItemRequest",
     "CartItemResponse"
+
+    # =-================================
+    "SpecificationTemplateResponse",
+    "SpecificationTemplateCreate",
+    "SpecificationTemplateUpdate"
 
 ]

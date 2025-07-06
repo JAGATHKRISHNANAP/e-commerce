@@ -8,6 +8,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+uploads/
 eggs/
 .eggs/
 lib/
@@ -24,6 +25,7 @@ wheels/
 .env
 .venv
 env/
+ecom/
 venv/
 ENV/
 env.bak/

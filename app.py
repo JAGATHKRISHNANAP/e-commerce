@@ -638,7 +638,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config.database import engine
 from src.models import Base
-from src.api.v1 import categories, products, auth,vender_auth, cart, addresses, orders
+from src.api.v1 import categories, products, auth,vender_auth, cart, addresses, orders,specifications,pricing
 import uvicorn
 import os
 
@@ -680,6 +680,8 @@ def create_app() -> FastAPI:
     app.include_router(vender_auth.router, prefix="/api/vendor", tags=["vender_auth"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
+    app.include_router(specifications.router, prefix="/api/v1", tags=["specifications"])
+    app.include_router(pricing.router, prefix="/api/v1", tags=["pricing"])
     app.include_router(products.router, prefix="/api/v1", tags=["products"])
     app.include_router(cart.router, prefix="/api/v1", tags=["cart"])
     app.include_router(addresses.router, prefix="/api/v1", tags=["addresses"])
