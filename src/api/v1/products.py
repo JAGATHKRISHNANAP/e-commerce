@@ -1905,7 +1905,69 @@ async def get_products(
         total_pages=total_pages
     )
 
-
+# # In your products.py, update the get_products function
+# @router.get("/products", response_model=ProductListResponse)
+# async def get_products(
+#     page: int = Query(1, ge=1),
+#     per_page: int = Query(10, ge=1, le=100),
+#     category_id: Optional[int] = Query(None, description="Category ID (integer)"),
+#     subcategory_id: Optional[int] = Query(None, description="Subcategory ID (integer)"),
+#     is_active: Optional[bool] = Query(None),
+#     search: Optional[str] = Query(None),
+#     sort_by: str = Query("name", description="Sort field"),
+#     sort_order: str = Query("asc", description="Sort order (asc/desc)"),
+#     min_price: Optional[float] = Query(None, description="Minimum price"),
+#     max_price: Optional[float] = Query(None, description="Maximum price"),
+#     db: Session = Depends(get_db)
+# ):
+#     """Get products with pagination and filters - enhanced validation"""
+#     try:
+#         query = db.query(Product).options(
+#             joinedload(Product.category),
+#             joinedload(Product.subcategory),
+#             joinedload(Product.images)
+#         )
+        
+#         # Apply filters with validation
+#         if category_id is not None and category_id > 0:
+#             query = query.filter(Product.category_id == category_id)
+#         if subcategory_id is not None and subcategory_id > 0:
+#             query = query.filter(Product.subcategory_id == subcategory_id)
+#         if is_active is not None:
+#             query = query.filter(Product.is_active == is_active)
+#         if search:
+#             query = query.filter(Product.name.ilike(f"%{search}%"))
+#         if min_price is not None:
+#             query = query.filter(Product.calculated_price >= min_price * 100)  # Convert to cents
+#         if max_price is not None:
+#             query = query.filter(Product.calculated_price <= max_price * 100)  # Convert to cents
+        
+#         # Apply sorting
+#         if sort_by == "price":
+#             if sort_order.lower() == "desc":
+#                 query = query.order_by(Product.calculated_price.desc())
+#             else:
+#                 query = query.order_by(Product.calculated_price.asc())
+#         elif sort_by == "name":
+#             if sort_order.lower() == "desc":
+#                 query = query.order_by(Product.name.desc())
+#             else:
+#                 query = query.order_by(Product.name.asc())
+        
+#         # Get total count
+#         total_count = query.count()
+        
+#         # Apply pagination
+#         offset = (page - 1) * per_page
+#         products = query.offset(offset).limit(per_page).all()
+        
+#         # Rest of your existing code...
+        
+#     except ValueError as e:
+#         raise HTTPException(status_code=422, detail=f"Invalid parameter: {str(e)}")
+#     except Exception as e:
+#         logger.error(f"Error in get_products: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 
