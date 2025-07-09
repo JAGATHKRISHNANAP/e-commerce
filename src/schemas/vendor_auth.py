@@ -42,20 +42,6 @@ class CompleteRegistrationRequest(BaseModel):
             raise ValueError('Name can only contain letters, spaces, hyphens, and apostrophes')
         return v.strip()
 
-# class CompleteRegistrationForm(BaseModel):
-#     phone_number: str = Field(..., min_length=10, max_length=15)
-#     name: str = Field(..., min_length=2, max_length=255)
-#     email: Optional[EmailStr]
-#     aadhar_number: str = Field(..., min_length=12, max_length=12)
-#     personal_address: str
-#     business_name: str
-#     business_type: str
-#     gst_number: Optional[str]
-#     business_address: str
-#     account_holder_name: str
-#     account_number: str
-#     ifsc_code: str
-
 
 class CompleteRegistrationForm(BaseModel):
     phone_number: str = Field(..., min_length=10, max_length=15)

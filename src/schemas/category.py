@@ -1,21 +1,3 @@
-# # src/schemas/category.py
-# from pydantic import BaseModel
-
-# class CategoryBase(BaseModel):
-#     name: str
-
-# class CategoryCreate(CategoryBase):
-#     pass
-
-# class CategoryResponse(CategoryBase):
-#     category_id: int
-    
-#     class Config:
-#         from_attributes = True
-
-
-
-
 # src/schemas/category.py - Fixed
 from pydantic import BaseModel, Field
 from typing import List, Optional

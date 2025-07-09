@@ -54,14 +54,6 @@ class VendorRegistrationRequest(BaseModel):
     
     # Business Details (Optional)
     years_in_business: Optional[int] = Field(None, ge=0, le=100)
-    # annual_turnover: Optional[float] = Field(None, ge=0)
-    # number_of_employees: Optional[int] = Field(None, ge=1)
-    # website_url: Optional[str] = Field(None, max_length=255)
-    
-    # # Additional Documents (Optional)
-    # business_license_number: Optional[str] = Field(None, max_length=100)
-    # tax_registration_number: Optional[str] = Field(None, max_length=50)
-    
     # Terms and Conditions
     terms_accepted: bool = Field(..., const=True)
     
@@ -185,14 +177,6 @@ class VendorDetailResponse(BaseModel):
     
     # Business Details
     years_in_business: Optional[int]
-    # annual_turnover: Optional[float]
-    # number_of_employees: Optional[int]
-    # website_url: Optional[str]
-    
-    # # Additional Information
-    # business_license_number: Optional[str]
-    # tax_registration_number: Optional[str]
-    
     # System Information
     vendor_status: str
     registration_date: datetime
@@ -265,10 +249,6 @@ class VendorProfileUpdate(BaseModel):
     
     # Business Details (updatable)
     years_in_business: Optional[int] = Field(None, ge=0, le=100)
-    # annual_turnover: Optional[float] = Field(None, ge=0)
-    # number_of_employees: Optional[int] = Field(None, ge=1)
-    # website_url: Optional[str] = Field(None, max_length=255)
-
 # Additional utility schemas
 class VendorSearchFilters(BaseModel):
     business_type: Optional[BusinessTypeEnum] = None
