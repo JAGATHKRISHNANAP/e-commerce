@@ -20,7 +20,30 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Your existing create_product endpoint remains unchanged
+# # Your existing create_product endpoint remains unchanged
+# @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+# async def create_product(
+#     # Form data - make some fields optional with defaults
+#     name: str = Form(...),
+#     description: str = Form(""),  # Default empty string instead of Optional
+#     category_id: int = Form(...),
+#     subcategory_id: int = Form(...),
+#     specifications: str = Form("{}"),  # JSON string
+#     base_price: str = Form(...),  # Accept as string to handle conversion
+#     stock_quantity: str = Form("0"),  # Accept as string to handle conversion
+#     sku: str = Form(""),  # Default empty string
+#     created_by: str = Form("admin"),
+#     is_active: str = Form("true"),  # Accept as string
+    
+#     # File uploads - make optional
+#     images: List[UploadFile] = File(default=[]),
+    
+#     # Dependencies
+#     db: Session = Depends(get_db)
+# ):
+#     # Your existing create_product implementation stays the same
+#     pass  # Replace with your existing implementation
+
 @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     # Form data - make some fields optional with defaults
@@ -41,8 +64,197 @@ async def create_product(
     # Dependencies
     db: Session = Depends(get_db)
 ):
-    # Your existing create_product implementation stays the same
-    pass  # Replace with your existing implementation
+    """Create a new product with images - debug version"""
+    try:
+        # Log incoming data for debugging
+        logger.info(f"Creating product: {name}")
+        logger.info(f"Category ID: {category_id}, Subcategory ID: {subcategory_id}")
+        logger.info(f"Base price: {base_price}, Stock: {stock_quantity}")
+        logger.info(f"Images count: {len(images) if images else 0}")
+        
+        # Convert and validate data types
+        try:
+            base_price_int = int(float(base_price))  # Convert to int (assuming it's in cents from frontend)
+            stock_quantity_int = int(stock_quantity) if stock_quantity else 0
+            is_active_bool = is_active.lower() in ('true', '1', 'yes')
+        except (ValueError, TypeError) as e:
+            logger.error(f"Data conversion error: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid data format: {str(e)}")
+        
+        # Parse specifications JSON
+        try:
+            specs_dict = json.loads(specifications) if specifications and specifications != '{}' else {}
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid specifications JSON: {str(e)}")
+        
+        # Verify category exists
+        category = db.query(Category).filter(Category.category_id == category_id).first()
+        if not category:
+            logger.error(f"Category {category_id} not found")
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        # Verify subcategory exists
+        subcategory = db.query(Subcategory).filter(Subcategory.subcategory_id == subcategory_id).first()
+        if not subcategory:
+            logger.error(f"Subcategory {subcategory_id} not found")
+            raise HTTPException(status_code=404, detail="Subcategory not found")
+        
+        # Check if SKU already exists (if provided)
+        if sku and sku.strip():
+            existing_sku = db.query(Product).filter(Product.sku == sku).first()
+            if existing_sku:
+                raise HTTPException(status_code=400, detail=f"SKU '{sku}' already exists")
+        
+        # Create product with validated data
+        product = Product(
+            name=name,
+            description=description if description else None,
+            category_id=category_id,
+            subcategory_id=subcategory_id,
+            specifications=specs_dict,
+            base_price=base_price_int,
+            stock_quantity=stock_quantity_int,
+            sku=sku if sku.strip() else None,
+            created_by=created_by,
+            is_active=is_active_bool
+        )
+        
+        # Calculate price using pricing service if available
+        try:
+            if specs_dict and hasattr(PricingService, '__init__'):
+                pricing_service = PricingService(db)
+                calculated_price, _, _ = pricing_service.calculate_price(
+                    subcategory_id,
+                    specs_dict,
+                    base_price_int
+                )
+                product.calculated_price = calculated_price
+            else:
+                product.calculated_price = base_price_int
+        except Exception as e:
+            logger.warning(f"Price calculation failed: {e}")
+            product.calculated_price = base_price_int
+        
+        # Save product first to get product_id
+        db.add(product)
+        db.flush()  # This assigns the product_id without committing
+        logger.info(f"Product created with ID: {product.product_id}")
+        
+        # Handle image uploads using your existing FileService
+        if images and len(images) > 0:
+            # Filter out empty files
+            valid_images = [img for img in images if img.filename and img.filename.strip()]
+            logger.info(f"Valid images to upload: {len(valid_images)}")
+            
+            if valid_images:
+                try:
+                    file_service = FileService()
+                    
+                    # Use your existing file service method
+                    upload_result = await file_service.save_multiple_product_images(
+                        images=valid_images,
+                        sales_user=created_by,
+                        product_id=product.product_id
+                    )
+                    
+                    logger.info(f"Upload result: {upload_result['total_uploaded']} uploaded, {upload_result['total_failed']} failed")
+                    
+                    # Create ProductImage records for successfully uploaded files
+                    for i, file_info in enumerate(upload_result['saved_files']):
+                        # First image is primary by default
+                        is_primary = (i == 0)
+                        
+                        product_image = ProductImage(
+                            product_id=product.product_id,
+                            image_filename=file_info['filename'],
+                            image_path=file_info['file_path'],
+                            image_url=file_info['image_url'],
+                            alt_text=f"{product.name} - Image {i+1}",
+                            is_primary=is_primary,
+                            display_order=i,
+                            file_size=file_info['file_size'],
+                            mime_type=file_info['mime_type'],
+                            uploaded_by=created_by
+                        )
+                        db.add(product_image)
+                    
+                    # Log any failed uploads
+                    if upload_result['failed_files']:
+                        logger.warning(f"Failed to upload {len(upload_result['failed_files'])} files:")
+                        for failed in upload_result['failed_files']:
+                            logger.warning(f"  - {failed['filename']}: {failed['error']}")
+                      # ✅ Set primary image URL and filename on the product
+                    primary_image = next((img for i, img in enumerate(upload_result['saved_files']) if i == 0), None)
+                    if primary_image:
+                        product.primary_image_url = primary_image.get("image_url")
+                        product.primary_image_filename = primary_image.get("filename")
+
+                    if upload_result['failed_files']:
+                        logger.warning(f"Failed to upload {len(upload_result['failed_files'])} files:")
+                        for failed in upload_result['failed_files']:
+                            logger.warning(f"  - {failed['filename']}: {failed['error']}")      
+                except Exception as e:
+                    logger.error(f"Image upload failed: {e}")
+                    # Don't fail the entire product creation if images fail
+                    # Just log the error and continue
+        
+        # Commit all changes
+        db.commit()
+        db.refresh(product)
+        logger.info(f"Product {product.product_id} successfully created")
+        
+        # Load product with all relationships
+        product_with_relations = db.query(Product)\
+            .options(
+                joinedload(Product.category),
+                joinedload(Product.subcategory),
+                joinedload(Product.images)
+            )\
+            .filter(Product.product_id == product.product_id)\
+            .first()
+        
+        # Convert to response format
+        response_data = {
+            "product_id": product_with_relations.product_id,
+            "name": product_with_relations.name,
+            "description": product_with_relations.description,
+            "category_id": product_with_relations.category_id,
+            "subcategory_id": product_with_relations.subcategory_id,
+            "specifications": product_with_relations.specifications,
+            "base_price": product_with_relations.base_price,
+            "calculated_price": product_with_relations.calculated_price,
+            "stock_quantity": product_with_relations.stock_quantity,
+            "sku": product_with_relations.sku,
+            "is_active": product_with_relations.is_active,
+            "created_by": product_with_relations.created_by,
+            "created_at": product_with_relations.created_at,
+            "updated_at": product_with_relations.updated_at,
+            "category": {
+                "category_id": product_with_relations.category.category_id,
+                "name": product_with_relations.category.name,
+                "description": product_with_relations.category.description
+            } if product_with_relations.category else None,
+            "subcategory": {
+                "subcategory_id": product_with_relations.subcategory.subcategory_id,
+                "name": product_with_relations.subcategory.name,
+                "description": product_with_relations.subcategory.description
+            } if product_with_relations.subcategory else None,
+            "primary_image_url": product_with_relations.primary_image_url,
+            "primary_image_filename": product_with_relations.primary_image_filename
+        }
+        
+        return ProductResponse(**response_data)
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error creating product: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create product: {str(e)}")
+
+
 
 # UPDATED: Enhanced get_products endpoint with proper price and sort filtering
 @router.get("/products", response_model=ProductListResponse)
