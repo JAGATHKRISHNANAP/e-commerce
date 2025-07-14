@@ -17,11 +17,19 @@ from src.models.vendor import Vendor as Customer
 
 router = APIRouter()
 
+
+
+
 def get_current_user(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ) -> Customer:
     """Get current authenticated user from JWT token"""
+    
+    # Debug: Print the complete authorization header
+    print(f"Full Authorization header: {authorization}")
+    print(f"Authorization header length: {len(authorization) if authorization else 0}")
+    
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -30,14 +38,40 @@ def get_current_user(
         )
     
     try:
-        # Extract token from "Bearer <token>"
         parts = authorization.split()
         if len(parts) != 2:
+            print(f"Authorization parts: {parts}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authorization header format",
                 headers={"WWW-Authenticate": "Bearer"}
             )
+        
+        scheme, token = parts
+        print(f"Token extracted: {token}")
+        print(f"Token length: {len(token)}")
+        print(f"Token parts count: {len(token.split('.'))}")
+# def get_current_user(
+#     authorization: Optional[str] = Header(None),
+#     db: Session = Depends(get_db)
+# ) -> Customer:
+#     """Get current authenticated user from JWT token"""
+#     if not authorization:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Authorization header missing",
+#             headers={"WWW-Authenticate": "Bearer"}
+#         )
+    
+#     try:
+#         # Extract token from "Bearer <token>"
+#         parts = authorization.split()
+#         if len(parts) != 2:
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Invalid authorization header format",
+#                 headers={"WWW-Authenticate": "Bearer"}
+#             )
         
         scheme, token = parts
         if scheme.lower() != "bearer":
@@ -158,6 +192,35 @@ async def complete_registration(
         vendor_photo=vendor_photo
     )
 
+# @router.get("/auth/me")
+# async def get_current_user_info(
+#     current_user: Customer = Depends(get_current_user)
+# ):
+#     """
+#     Get current authenticated user information.
+#     Requires valid JWT token in Authorization header.
+#     """
+#     return {
+#         "vendor_id": current_user.vendor_id,
+#         "phone_number": current_user.vendor_ph_no,
+#         "name": current_user.vendor_name,
+#         "email": current_user.vendor_email,
+#         "aadhar_number": current_user.aadhar_number,
+#         "personal_address": current_user.personal_address,
+#         "business_name": current_user.business_name,
+#         "business_type": current_user.business_type,
+#         "gst_number": current_user.gst_number,
+#         "business_address": current_user.business_address,
+#         "account_holder_name": current_user.account_holder_name,
+#         "account_number": current_user.account_number,
+#         "ifsc_code": current_user.ifsc_code,
+#         "vendor_photo_path": current_user.vendor_photo_path,
+#         "is_verified": True,
+#         "is_profile_complete": current_user.vendor_name is not None,
+#         "created_at": current_user.date_of_registration.isoformat()
+#     }
+
+
 @router.get("/auth/me")
 async def get_current_user_info(
     current_user: Customer = Depends(get_current_user)
@@ -166,25 +229,56 @@ async def get_current_user_info(
     Get current authenticated user information.
     Requires valid JWT token in Authorization header.
     """
+    # Combine address fields into a single personal_address string
+    personal_address_parts = []
+    if current_user.address_line1:
+        personal_address_parts.append(current_user.address_line1)
+    if current_user.address_line2:
+        personal_address_parts.append(current_user.address_line2)
+    if current_user.district:
+        personal_address_parts.append(current_user.district)
+    if current_user.state:
+        personal_address_parts.append(current_user.state)
+    if current_user.pincode:
+        personal_address_parts.append(current_user.pincode)
+    
+    personal_address = ", ".join(personal_address_parts) if personal_address_parts else None
+    
     return {
         "vendor_id": current_user.vendor_id,
         "phone_number": current_user.vendor_ph_no,
         "name": current_user.vendor_name,
         "email": current_user.vendor_email,
         "aadhar_number": current_user.aadhar_number,
-        "personal_address": current_user.personal_address,
+        
+        # Individual address fields (directly access since they exist in your model)
+        "address_line1": current_user.address_line1,
+        "address_line2": current_user.address_line2,
+        "district": current_user.district,
+        "state": current_user.state,
+        "pincode": current_user.pincode,
+        
+        # Combined address for backwards compatibility
+        "personal_address": personal_address,
+        
+        # Business information
         "business_name": current_user.business_name,
         "business_type": current_user.business_type,
         "gst_number": current_user.gst_number,
         "business_address": current_user.business_address,
+        
+        # Bank details
         "account_holder_name": current_user.account_holder_name,
         "account_number": current_user.account_number,
         "ifsc_code": current_user.ifsc_code,
+        
+        # Photo and status
         "vendor_photo_path": current_user.vendor_photo_path,
         "is_verified": True,
         "is_profile_complete": current_user.vendor_name is not None,
         "created_at": current_user.date_of_registration.isoformat()
     }
+
 
 
 @router.post("/auth/logout")
