@@ -32,6 +32,10 @@ class ProductUpdate(BaseModel):
     sku: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
 
+class VariantResponse(BaseModel):
+    product_id: int
+    specifications: Dict[str, Any]
+
 class ProductResponse(ProductBase):
     product_id: int
     category_id: int
@@ -42,6 +46,8 @@ class ProductResponse(ProductBase):
     created_by: str
     created_at: datetime
     updated_at: datetime
+    group_id: Optional[str] = None
+    variants: List[VariantResponse] = []
     
     # These will be populated by the API if needed
     category: Optional[Dict[str, Any]] = None

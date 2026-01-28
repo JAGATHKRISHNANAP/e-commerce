@@ -48,3 +48,8 @@ venv.bak/
 # Alembic
 alembic/versions/*.py
 !alembic/versions/__init__.py
+add_group_id.py
+debug_pydantic.py
+debug_query.py
+dump_products.py
+force_group_products.py

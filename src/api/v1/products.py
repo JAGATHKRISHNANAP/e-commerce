@@ -276,14 +276,21 @@ async def get_products(
     sort_order: str = Query("asc", description="Sort order: asc or desc"),
     min_price: Optional[float] = Query(None, description="Minimum price in rupees"),
     max_price: Optional[float] = Query(None, description="Maximum price in rupees"),
+    group_by_variants: bool = Query(True, description="Group variants into a single product card"),
     db: Session = Depends(get_db)
 ):
-    """Get products with pagination and enhanced filters including price and sorting"""
+    """
+    Get list of products with pagination, filtering, sorting, and search.
+    Groups variants (returns only one representative per group) unless group_by_variants=False.
+    """
     try:
+        from sqlalchemy import or_, func, and_
+        
         logger.info(f"Product search - Category: {category_id}, Subcategory: {subcategory_id}")
         logger.info(f"Price range: {min_price} - {max_price}")
         logger.info(f"Sort: {sort_by} {sort_order}")
         
+        # Base query
         query = db.query(Product).options(
             joinedload(Product.category),
             joinedload(Product.subcategory),
@@ -294,10 +301,142 @@ async def get_products(
         if category_id is not None and category_id > 0:
             query = query.filter(Product.category_id == category_id)
             logger.info(f"Applied category filter: {category_id}")
-            
+
         if subcategory_id is not None and subcategory_id > 0:
             query = query.filter(Product.subcategory_id == subcategory_id)
             logger.info(f"Applied subcategory filter: {subcategory_id}")
+            
+        if is_active is not None:
+             query = query.filter(Product.is_active == is_active)
+        else:
+            # By default, only show active products
+            query = query.filter(Product.is_active == True)
+            
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Product.name.ilike(search_term),
+                    Product.description.ilike(search_term),
+                    Product.sku.ilike(search_term)
+                )
+            )
+            
+        # Price range filter
+        if min_price is not None:
+             min_cents = int(min_price * 100)
+             query = query.filter(func.coalesce(Product.calculated_price, Product.base_price) >= min_cents)
+             
+        if max_price is not None:
+             max_cents = int(max_price * 100)
+             query = query.filter(func.coalesce(Product.calculated_price, Product.base_price) <= max_cents)
+
+        # GROUPING LOGIC: Deduplicate variants (only if requested)
+        if group_by_variants:
+            # Subquery to find the 'representative' product_id for each group
+            # We need to respect is_active in the subquery if applied above
+            subq_filter = Product.group_id.isnot(None)
+            if is_active is not None:
+                 subq_filter = and_(Product.group_id.isnot(None), Product.is_active == is_active)
+                
+            representative_subquery = db.query(func.min(Product.product_id))\
+                .filter(subq_filter)\
+                .group_by(Product.group_id)
+                
+            query = query.filter(
+                or_(
+                    Product.group_id.is_(None),
+                    Product.product_id.in_(representative_subquery)
+                )
+            )
+        else:
+            logger.info("Variant grouping disabled - showing all products")
+
+
+# ... rest of pagination/sorting logic is preserved in file content below this block? 
+# NO, I need to include the rest of the function because I'm replacing the top half and might break it.
+# Let's include the whole function to be safe.
+
+        # Count total before pagination
+        total_count = query.count()
+        
+        # Sorting
+        if sort_by == 'price':
+            sort_attr = Product.base_price
+        elif sort_by == 'created_at':
+            sort_attr = Product.created_at
+        else: # default to name
+            sort_attr = Product.name
+            
+        if sort_order == 'desc':
+            query = query.order_by(sort_attr.desc())
+        else:
+            query = query.order_by(sort_attr.asc())
+            
+        # Pagination
+        offset = (page - 1) * per_page
+        products = query.offset(offset).limit(per_page).all()
+        
+        # Convert to dictionary list to avoid SQLAlchemy/Pydantic conflicts
+        results = []
+        for p in products:
+            # Handle calculated_price safety
+            calc_price = p.calculated_price if p.calculated_price is not None else p.base_price
+            
+            item = {
+                "product_id": p.product_id,
+                "name": p.name,
+                "description": p.description,
+                "base_price": p.base_price,
+                "calculated_price": calc_price,
+                "stock_quantity": p.stock_quantity,
+                "category_id": p.category_id,
+                "subcategory_id": p.subcategory_id,
+                "created_by": p.created_by,
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+                "is_active": p.is_active,
+                "sku": p.sku,
+                "specifications": p.specifications or {},
+                "primary_image_url": p.primary_image_url,
+                "primary_image_filename": p.primary_image_filename,
+                "group_id": p.group_id,
+                "variants": [],
+                "images": p.images # ORM list, Pydantic should handle this conversion
+            }
+            
+            # Handle dictionary fields
+            if p.category:
+                item["category"] = {
+                    "category_id": p.category.category_id,
+                    "name": p.category.name
+                }
+            else:
+                item["category"] = None
+                
+            if p.subcategory:
+                item["subcategory"] = {
+                    "subcategory_id": p.subcategory.subcategory_id,
+                    "name": p.subcategory.name
+                }
+            else:
+                item["subcategory"] = None
+                
+            results.append(item)
+        
+        total_pages = (total_count + per_page - 1) // per_page
+        
+        return ProductListResponse(
+            products=results,
+            total_count=total_count,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching products: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
             
         if is_active is not None:
             query = query.filter(Product.is_active == is_active)
@@ -463,19 +602,119 @@ async def get_price_range(
         }
 
 
+# NEW: Auto-group products
+@router.post("/products/auto-group")
+async def auto_group_products(db: Session = Depends(get_db)):
+    """Automatically group products with similar names (ignoring case and whitespace)"""
+    try:
+        products = db.query(Product).filter(Product.is_active == True).all()
+        grouped_count = 0
+        
+        # Simple grouping logic: normalize name (lowercase, strip) -> list of products
+        name_map = {}
+        for p in products:
+            normalized_name = p.name.lower().strip()
+            # Remove variant keywords for grouping if needed, but strict name match is safer for now
+            # "Kurthi" vs "Kurthi Red" - we probably want to group by base Name "Kurthi"
+            # For this iteration, let's assume products have SAME NAME but different specs
+            # If names differ ("Red Kurthi" vs "Blue Kurthi"), this won't group them yet.
+            # User said "product is kurthi with different color", implying name is "Kurthi".
+            
+            if normalized_name not in name_map:
+                name_map[normalized_name] = []
+            name_map[normalized_name].append(p)
+            
+        for name, group in name_map.items():
+            if len(group) > 1:
+                # Generate a group ID for this batch
+                import uuid
+                new_group_id = str(uuid.uuid4())
+                
+                for p in group:
+                    if not p.group_id: # Only assign if not already grouped? Or overwrite? Overwrite for now.
+                        p.group_id = new_group_id
+                        grouped_count += 1
+        
+        db.commit()
+        return {"message": f"Grouped {grouped_count} products into {len([g for g in name_map.values() if len(g)>1])} groups"}
+        
+    except Exception as e:
+        logger.error(f"Auto-grouping failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: int, db: Session = Depends(get_db)):
-    """Get a single product by ID"""
-    service = ProductService(db)
-    product = service.get_product_by_id(product_id)
+    """Get a single product by ID with variants"""
+    # Fetch main product
+    product = db.query(Product)\
+        .options(
+            joinedload(Product.category),
+            joinedload(Product.subcategory),
+            joinedload(Product.images)
+        )\
+        .filter(Product.product_id == product_id)\
+        .first()
+        
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+        
+    # Prepare response object manually to avoid SQLAlchemy/Pydantic conflicts
+    # Check for variants (siblings with same group_id)
+    variants_list = []
+    if product.group_id:
+        siblings = db.query(Product.product_id, Product.specifications)\
+            .filter(Product.group_id == product.group_id)\
+            .filter(Product.product_id != product_id)\
+            .all()
+            
+        for sib_id, sib_specs in siblings:
+            variants_list.append({
+                "product_id": sib_id,
+                "specifications": sib_specs or {}
+            })
+            
+    # Calculate display price
+    calc_price = product.calculated_price if product.calculated_price is not None else product.base_price
+
+    response_data = {
+        "product_id": product.product_id,
+        "name": product.name,
+        "description": product.description,
+        "base_price": product.base_price,
+        "calculated_price": calc_price,
+        "stock_quantity": product.stock_quantity,
+        "category_id": product.category_id,
+        "subcategory_id": product.subcategory_id,
+        "created_by": product.created_by,
+        "created_at": product.created_at,
+        "updated_at": product.updated_at,
+        "is_active": product.is_active,
+        "sku": product.sku,
+        "specifications": product.specifications or {},
+        "primary_image_url": product.primary_image_url,
+        "primary_image_filename": product.primary_image_filename,
+        "group_id": product.group_id,
+        "variants": variants_list,
+        "images": product.images, # Pydantic handles ORM list conversion nicely usually
+        "category": {
+            "category_id": product.category.category_id,
+            "name": product.category.name,
+            "description": product.category.description
+        } if product.category else None,
+        "subcategory": {
+            "subcategory_id": product.subcategory.subcategory_id,
+            "name": product.subcategory.name,
+            "description": product.subcategory.description
+        } if product.subcategory else None
+    }
+    
+    return ProductResponse(**response_data)
 
 # Your existing test endpoint remains unchanged
 @router.post("/products/test")
 async def test_form_data(
     name: str = Form(...),
+# ... rest of file (update_product, delete_image) ...
     category_id: int = Form(...),
     base_price: str = Form(...),
     images: List[UploadFile] = File(default=[])
@@ -518,3 +757,239 @@ async def get_product_images(product_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error fetching product images: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+# NEW: Update product
+@router.put("/products/{product_id}", response_model=ProductResponse)
+async def update_product(
+    product_id: int,
+    # Form data - all optional
+    name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    category_id: Optional[int] = Form(None),
+    subcategory_id: Optional[int] = Form(None),
+    specifications: Optional[str] = Form(None),  # JSON string
+    base_price: Optional[str] = Form(None),
+    stock_quantity: Optional[str] = Form(None),
+    sku: Optional[str] = Form(None),
+    is_active: Optional[str] = Form(None),
+    
+    # File uploads - optional
+    images: List[UploadFile] = File(default=[]),
+    
+    # Dependencies
+    db: Session = Depends(get_db)
+):
+    """Update an existing product"""
+    try:
+        # Get existing product
+        product = db.query(Product).filter(Product.product_id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        logger.info(f"Updating product {product_id}")
+        
+        # Update fields if provided
+        if name is not None:
+            product.name = name
+            
+        if description is not None:
+            product.description = description
+            
+        if category_id is not None:
+            # Verify category exists
+            category = db.query(Category).filter(Category.category_id == category_id).first()
+            if not category:
+                raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
+            product.category_id = category_id
+            
+        if subcategory_id is not None:
+            # Verify subcategory exists
+            subcategory = db.query(Subcategory).filter(Subcategory.subcategory_id == subcategory_id).first()
+            if not subcategory:
+                raise HTTPException(status_code=404, detail=f"Subcategory {subcategory_id} not found")
+            product.subcategory_id = subcategory_id
+            
+        if sku is not None:
+            # Check for uniqueness if SKU changed
+            if sku != product.sku:
+                 existing_sku = db.query(Product).filter(Product.sku == sku).first()
+                 if existing_sku:
+                     raise HTTPException(status_code=400, detail=f"SKU '{sku}' already exists")
+            product.sku = sku
+
+        if is_active is not None:
+             product.is_active = is_active.lower() in ('true', '1', 'yes')
+
+        if base_price is not None:
+            try:
+                base_price_int = int(float(base_price))
+                product.base_price = base_price_int
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid base_price format")
+
+        if stock_quantity is not None:
+            try:
+                product.stock_quantity = int(stock_quantity)
+            except (ValueError, TypeError):
+                 raise HTTPException(status_code=400, detail="Invalid stock_quantity format")
+                 
+        if specifications is not None:
+            try:
+                specs_dict = json.loads(specifications) if specifications and specifications != '{}' else {}
+                product.specifications = specs_dict
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid specifications JSON")
+
+        # Recalculate price if necessary
+        # Simplified: just update calculated_price unless we want to run full pricing rules again
+        # For now, let's re-run basic calculation if base_price changed
+        # ideally we should use the service
+        try:
+             # Use the service if we have it/can import it, or just basic assignment
+             if hasattr(PricingService, '__init__'):
+                 pricing_service = PricingService(db)
+                 calculated_price, _, _ = pricing_service.calculate_price(
+                     product.subcategory_id,
+                     product.specifications or {},
+                     product.base_price
+                 )
+                 product.calculated_price = calculated_price
+             else:
+                 product.calculated_price = product.base_price
+        except Exception as e:
+            logger.warning(f"Price recalc failed: {e}")
+            product.calculated_price = product.base_price
+
+        # Handle new images
+        if images and len(images) > 0:
+            valid_images = [img for img in images if img.filename and img.filename.strip()]
+            if valid_images:
+                try:
+                    file_service = FileService()
+                    upload_result = await file_service.save_multiple_product_images(
+                        images=valid_images,
+                        sales_user=product.created_by, # Keep original creator or use current user? Using original for path consistency
+                        product_id=product.product_id
+                    )
+                    
+                    # Get max display order
+                    max_order = db.query(func.max(ProductImage.display_order)).filter(ProductImage.product_id == product_id).scalar() or 0
+                    
+                    for i, file_info in enumerate(upload_result['saved_files']):
+                        product_image = ProductImage(
+                            product_id=product.product_id,
+                            image_filename=file_info['filename'],
+                            image_path=file_info['file_path'],
+                            image_url=file_info['image_url'],
+                            alt_text=f"{product.name} - Image",
+                            is_primary=False, # New images not primary by default
+                            display_order=max_order + i + 1,
+                            file_size=file_info['file_size'],
+                            mime_type=file_info['mime_type'],
+                            uploaded_by=product.created_by
+                        )
+                        db.add(product_image)
+                        
+                    # Update primary image if none exists
+                    if not product.primary_image_url and upload_result['saved_files']:
+                         first_img = upload_result['saved_files'][0]
+                         product.primary_image_url = first_img['image_url']
+                         product.primary_image_filename = first_img['filename']
+                         
+                except Exception as e:
+                    logger.error(f"Image upload failed during update: {e}")
+
+        db.commit()
+        db.refresh(product)
+        
+        # Reload with relations
+        product_with_relations = db.query(Product)\
+            .options(
+                joinedload(Product.category),
+                joinedload(Product.subcategory),
+                joinedload(Product.images)
+            )\
+            .filter(Product.product_id == product.product_id)\
+            .first()
+
+        # Construct response (same logic as create/get)
+        response_data = {
+            "product_id": product_with_relations.product_id,
+            "name": product_with_relations.name,
+            "description": product_with_relations.description,
+            "category_id": product_with_relations.category_id,
+            "subcategory_id": product_with_relations.subcategory_id,
+            "specifications": product_with_relations.specifications,
+            "base_price": product_with_relations.base_price,
+            "calculated_price": product_with_relations.calculated_price,
+            "stock_quantity": product_with_relations.stock_quantity,
+            "sku": product_with_relations.sku,
+            "is_active": product_with_relations.is_active,
+            "created_by": product_with_relations.created_by,
+            "created_at": product_with_relations.created_at,
+            "updated_at": product_with_relations.updated_at,
+            "category": {
+                "category_id": product_with_relations.category.category_id,
+                "name": product_with_relations.category.name,
+                "description": product_with_relations.category.description
+            } if product_with_relations.category else None,
+            "subcategory": {
+                "subcategory_id": product_with_relations.subcategory.subcategory_id,
+                "name": product_with_relations.subcategory.name,
+                "description": product_with_relations.subcategory.description
+            } if product_with_relations.subcategory else None,
+            "primary_image_url": product_with_relations.primary_image_url,
+            "primary_image_filename": product_with_relations.primary_image_filename
+        }
+        return ProductResponse(**response_data)
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error updating product: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update product: {str(e)}")
+
+# NEW: Delete product image
+@router.delete("/products/{product_id}/images/{image_id}")
+async def delete_product_image(product_id: int, image_id: int, db: Session = Depends(get_db)):
+    """Delete a product image"""
+    try:
+        image = db.query(ProductImage).filter(
+            ProductImage.image_id == image_id,
+            ProductImage.product_id == product_id
+        ).first()
+        
+        if not image:
+            raise HTTPException(status_code=404, detail="Image not found")
+            
+        # Optional: Delete file from disk (FileService)
+        # For now, just delete DB record to act fast
+        
+        db.delete(image)
+        
+        # If primary, pick a new one
+        if image.is_primary:
+            new_primary = db.query(ProductImage).filter(
+                ProductImage.product_id == product_id,
+                ProductImage.image_id != image_id
+            ).first()
+            
+            product = db.query(Product).filter(Product.product_id == product_id).first()
+            if new_primary:
+                new_primary.is_primary = True
+                if product:
+                    product.primary_image_url = new_primary.image_url
+                    product.primary_image_filename = new_primary.image_filename
+            else:
+                 if product:
+                    product.primary_image_url = None
+                    product.primary_image_filename = None
+        
+        db.commit()
+        return {"detail": "Image deleted successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting image: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete image")

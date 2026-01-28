@@ -9,8 +9,9 @@ from .jagath import Jagath
 from .address import CustomerAddress
 from .vendor import Vendor
 from .product_image import ProductImage
+from .order import Order
 
 # from
 
-__all__ = ["Base", "Category", "Product","OTP","Customer", "Jagath","Cart", "CartItem","CustomerAddress", "Vendor","Subcategory", "SpecificationTemplate", "PriceRule", "ProductImage"]
+__all__ = ["Base", "Category", "Product","OTP","Customer", "Jagath","Cart", "CartItem","CustomerAddress", "Vendor","Subcategory", "SpecificationTemplate", "PriceRule", "ProductImage", "Order"]
 
