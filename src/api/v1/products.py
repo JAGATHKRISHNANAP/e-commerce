@@ -13,6 +13,7 @@ from src.services.file_service import FileService
 from src.services.product_service import ProductService
 import json
 import logging
+import uuid
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,7 @@ async def create_product(
     base_price: str = Form(...),  # Accept as string to handle conversion
     stock_quantity: str = Form("0"),  # Accept as string to handle conversion
     sku: str = Form(""),  # Default empty string
+    group_id: str = Form(None), # Optional group ID
     created_by: str = Form("admin"),
     is_active: str = Form("true"),  # Accept as string
     
@@ -83,6 +85,9 @@ async def create_product(
             if existing_sku:
                 raise HTTPException(status_code=400, detail=f"SKU '{sku}' already exists")
         
+        # Handle Group ID
+        final_group_id = group_id if group_id and group_id.strip() else str(uuid.uuid4())
+
         # Create product with validated data
         product = Product(
             name=name,
@@ -93,6 +98,7 @@ async def create_product(
             base_price=base_price_int,
             stock_quantity=stock_quantity_int,
             sku=sku if sku.strip() else None,
+            group_id=final_group_id,
             created_by=created_by,
             is_active=is_active_bool
         )
@@ -210,12 +216,12 @@ async def create_product(
             "category": {
                 "category_id": product_with_relations.category.category_id,
                 "name": product_with_relations.category.name,
-                "description": product_with_relations.category.description
+                "description": product.category.description
             } if product_with_relations.category else None,
             "subcategory": {
                 "subcategory_id": product_with_relations.subcategory.subcategory_id,
                 "name": product_with_relations.subcategory.name,
-                "description": product_with_relations.subcategory.description
+                "description": product.subcategory.description
             } if product_with_relations.subcategory else None,
             "primary_image_url": product_with_relations.primary_image_url,
             "primary_image_filename": product_with_relations.primary_image_filename
@@ -276,167 +282,36 @@ async def get_products(
     sort_order: str = Query("asc", description="Sort order: asc or desc"),
     min_price: Optional[float] = Query(None, description="Minimum price in rupees"),
     max_price: Optional[float] = Query(None, description="Maximum price in rupees"),
-    group_by_variants: bool = Query(True, description="Group variants into a single product card"),
+    group_products: bool = Query(True, description="Group variants (show single product per group)"),
     db: Session = Depends(get_db)
 ):
-    """
-    Get list of products with pagination, filtering, sorting, and search.
-    Groups variants (returns only one representative per group) unless group_by_variants=False.
-    """
+    """Get products with pagination and enhanced filters including price and sorting"""
     try:
-        from sqlalchemy import or_, func, and_
-        
         logger.info(f"Product search - Category: {category_id}, Subcategory: {subcategory_id}")
         logger.info(f"Price range: {min_price} - {max_price}")
         logger.info(f"Sort: {sort_by} {sort_order}")
         
-        # Base query
         query = db.query(Product).options(
             joinedload(Product.category),
             joinedload(Product.subcategory),
             joinedload(Product.images)
         )
         
+        # GROUPING LOGIC - Pick one per group
+        if group_products:
+             # Using subquery to find the 'min_id' or 'first' product for each group
+             subquery = db.query(func.min(Product.product_id).label("min_id")).group_by(Product.group_id).subquery()
+             query = query.join(subquery, Product.product_id == subquery.c.min_id)
+             logger.info("Applied product grouping (ONE per group)")
+
         # Apply filters with validation
         if category_id is not None and category_id > 0:
             query = query.filter(Product.category_id == category_id)
             logger.info(f"Applied category filter: {category_id}")
-
+            
         if subcategory_id is not None and subcategory_id > 0:
             query = query.filter(Product.subcategory_id == subcategory_id)
             logger.info(f"Applied subcategory filter: {subcategory_id}")
-            
-        if is_active is not None:
-             query = query.filter(Product.is_active == is_active)
-        else:
-            # By default, only show active products
-            query = query.filter(Product.is_active == True)
-            
-        if search:
-            search_term = f"%{search}%"
-            query = query.filter(
-                or_(
-                    Product.name.ilike(search_term),
-                    Product.description.ilike(search_term),
-                    Product.sku.ilike(search_term)
-                )
-            )
-            
-        # Price range filter
-        if min_price is not None:
-             min_cents = int(min_price * 100)
-             query = query.filter(func.coalesce(Product.calculated_price, Product.base_price) >= min_cents)
-             
-        if max_price is not None:
-             max_cents = int(max_price * 100)
-             query = query.filter(func.coalesce(Product.calculated_price, Product.base_price) <= max_cents)
-
-        # GROUPING LOGIC: Deduplicate variants (only if requested)
-        if group_by_variants:
-            # Subquery to find the 'representative' product_id for each group
-            # We need to respect is_active in the subquery if applied above
-            subq_filter = Product.group_id.isnot(None)
-            if is_active is not None:
-                 subq_filter = and_(Product.group_id.isnot(None), Product.is_active == is_active)
-                
-            representative_subquery = db.query(func.min(Product.product_id))\
-                .filter(subq_filter)\
-                .group_by(Product.group_id)
-                
-            query = query.filter(
-                or_(
-                    Product.group_id.is_(None),
-                    Product.product_id.in_(representative_subquery)
-                )
-            )
-        else:
-            logger.info("Variant grouping disabled - showing all products")
-
-
-# ... rest of pagination/sorting logic is preserved in file content below this block? 
-# NO, I need to include the rest of the function because I'm replacing the top half and might break it.
-# Let's include the whole function to be safe.
-
-        # Count total before pagination
-        total_count = query.count()
-        
-        # Sorting
-        if sort_by == 'price':
-            sort_attr = Product.base_price
-        elif sort_by == 'created_at':
-            sort_attr = Product.created_at
-        else: # default to name
-            sort_attr = Product.name
-            
-        if sort_order == 'desc':
-            query = query.order_by(sort_attr.desc())
-        else:
-            query = query.order_by(sort_attr.asc())
-            
-        # Pagination
-        offset = (page - 1) * per_page
-        products = query.offset(offset).limit(per_page).all()
-        
-        # Convert to dictionary list to avoid SQLAlchemy/Pydantic conflicts
-        results = []
-        for p in products:
-            # Handle calculated_price safety
-            calc_price = p.calculated_price if p.calculated_price is not None else p.base_price
-            
-            item = {
-                "product_id": p.product_id,
-                "name": p.name,
-                "description": p.description,
-                "base_price": p.base_price,
-                "calculated_price": calc_price,
-                "stock_quantity": p.stock_quantity,
-                "category_id": p.category_id,
-                "subcategory_id": p.subcategory_id,
-                "created_by": p.created_by,
-                "created_at": p.created_at,
-                "updated_at": p.updated_at,
-                "is_active": p.is_active,
-                "sku": p.sku,
-                "specifications": p.specifications or {},
-                "primary_image_url": p.primary_image_url,
-                "primary_image_filename": p.primary_image_filename,
-                "group_id": p.group_id,
-                "variants": [],
-                "images": p.images # ORM list, Pydantic should handle this conversion
-            }
-            
-            # Handle dictionary fields
-            if p.category:
-                item["category"] = {
-                    "category_id": p.category.category_id,
-                    "name": p.category.name
-                }
-            else:
-                item["category"] = None
-                
-            if p.subcategory:
-                item["subcategory"] = {
-                    "subcategory_id": p.subcategory.subcategory_id,
-                    "name": p.subcategory.name
-                }
-            else:
-                item["subcategory"] = None
-                
-            results.append(item)
-        
-        total_pages = (total_count + per_page - 1) // per_page
-        
-        return ProductListResponse(
-            products=results,
-            total_count=total_count,
-            page=page,
-            per_page=per_page,
-            total_pages=total_pages
-        )
-        
-    except Exception as e:
-        logger.error(f"Error fetching products: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
             
         if is_active is not None:
             query = query.filter(Product.is_active == is_active)
@@ -517,6 +392,7 @@ async def get_products(
                 "calculated_price": product.calculated_price,
                 "stock_quantity": product.stock_quantity,
                 "sku": product.sku,
+                # "group_id": product.group_id, # Can add if needed in list view
                 "is_active": product.is_active,
                 "created_by": product.created_by,
                 "created_at": product.created_at,
@@ -602,119 +478,19 @@ async def get_price_range(
         }
 
 
-# NEW: Auto-group products
-@router.post("/products/auto-group")
-async def auto_group_products(db: Session = Depends(get_db)):
-    """Automatically group products with similar names (ignoring case and whitespace)"""
-    try:
-        products = db.query(Product).filter(Product.is_active == True).all()
-        grouped_count = 0
-        
-        # Simple grouping logic: normalize name (lowercase, strip) -> list of products
-        name_map = {}
-        for p in products:
-            normalized_name = p.name.lower().strip()
-            # Remove variant keywords for grouping if needed, but strict name match is safer for now
-            # "Kurthi" vs "Kurthi Red" - we probably want to group by base Name "Kurthi"
-            # For this iteration, let's assume products have SAME NAME but different specs
-            # If names differ ("Red Kurthi" vs "Blue Kurthi"), this won't group them yet.
-            # User said "product is kurthi with different color", implying name is "Kurthi".
-            
-            if normalized_name not in name_map:
-                name_map[normalized_name] = []
-            name_map[normalized_name].append(p)
-            
-        for name, group in name_map.items():
-            if len(group) > 1:
-                # Generate a group ID for this batch
-                import uuid
-                new_group_id = str(uuid.uuid4())
-                
-                for p in group:
-                    if not p.group_id: # Only assign if not already grouped? Or overwrite? Overwrite for now.
-                        p.group_id = new_group_id
-                        grouped_count += 1
-        
-        db.commit()
-        return {"message": f"Grouped {grouped_count} products into {len([g for g in name_map.values() if len(g)>1])} groups"}
-        
-    except Exception as e:
-        logger.error(f"Auto-grouping failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: int, db: Session = Depends(get_db)):
-    """Get a single product by ID with variants"""
-    # Fetch main product
-    product = db.query(Product)\
-        .options(
-            joinedload(Product.category),
-            joinedload(Product.subcategory),
-            joinedload(Product.images)
-        )\
-        .filter(Product.product_id == product_id)\
-        .first()
-        
+    """Get a single product by ID"""
+    service = ProductService(db)
+    product = service.get_product_by_id(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-        
-    # Prepare response object manually to avoid SQLAlchemy/Pydantic conflicts
-    # Check for variants (siblings with same group_id)
-    variants_list = []
-    if product.group_id:
-        siblings = db.query(Product.product_id, Product.specifications)\
-            .filter(Product.group_id == product.group_id)\
-            .filter(Product.product_id != product_id)\
-            .all()
-            
-        for sib_id, sib_specs in siblings:
-            variants_list.append({
-                "product_id": sib_id,
-                "specifications": sib_specs or {}
-            })
-            
-    # Calculate display price
-    calc_price = product.calculated_price if product.calculated_price is not None else product.base_price
-
-    response_data = {
-        "product_id": product.product_id,
-        "name": product.name,
-        "description": product.description,
-        "base_price": product.base_price,
-        "calculated_price": calc_price,
-        "stock_quantity": product.stock_quantity,
-        "category_id": product.category_id,
-        "subcategory_id": product.subcategory_id,
-        "created_by": product.created_by,
-        "created_at": product.created_at,
-        "updated_at": product.updated_at,
-        "is_active": product.is_active,
-        "sku": product.sku,
-        "specifications": product.specifications or {},
-        "primary_image_url": product.primary_image_url,
-        "primary_image_filename": product.primary_image_filename,
-        "group_id": product.group_id,
-        "variants": variants_list,
-        "images": product.images, # Pydantic handles ORM list conversion nicely usually
-        "category": {
-            "category_id": product.category.category_id,
-            "name": product.category.name,
-            "description": product.category.description
-        } if product.category else None,
-        "subcategory": {
-            "subcategory_id": product.subcategory.subcategory_id,
-            "name": product.subcategory.name,
-            "description": product.subcategory.description
-        } if product.subcategory else None
-    }
-    
-    return ProductResponse(**response_data)
+    return product
 
 # Your existing test endpoint remains unchanged
 @router.post("/products/test")
 async def test_form_data(
     name: str = Form(...),
-# ... rest of file (update_product, delete_image) ...
     category_id: int = Form(...),
     base_price: str = Form(...),
     images: List[UploadFile] = File(default=[])
@@ -770,6 +546,7 @@ async def update_product(
     base_price: Optional[str] = Form(None),
     stock_quantity: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
+    group_id: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
     
     # File uploads - optional
@@ -815,6 +592,9 @@ async def update_product(
                  if existing_sku:
                      raise HTTPException(status_code=400, detail=f"SKU '{sku}' already exists")
             product.sku = sku
+            
+        if group_id is not None:
+            product.group_id = group_id
 
         if is_active is not None:
              product.is_active = is_active.lower() in ('true', '1', 'yes')
@@ -923,6 +703,7 @@ async def update_product(
             "calculated_price": product_with_relations.calculated_price,
             "stock_quantity": product_with_relations.stock_quantity,
             "sku": product_with_relations.sku,
+            "group_id": product_with_relations.group_id,
             "is_active": product_with_relations.is_active,
             "created_by": product_with_relations.created_by,
             "created_at": product_with_relations.created_at,
@@ -930,12 +711,12 @@ async def update_product(
             "category": {
                 "category_id": product_with_relations.category.category_id,
                 "name": product_with_relations.category.name,
-                "description": product_with_relations.category.description
+                "description": product.category.description
             } if product_with_relations.category else None,
             "subcategory": {
                 "subcategory_id": product_with_relations.subcategory.subcategory_id,
                 "name": product_with_relations.subcategory.name,
-                "description": product_with_relations.subcategory.description
+                "description": product.subcategory.description
             } if product_with_relations.subcategory else None,
             "primary_image_url": product_with_relations.primary_image_url,
             "primary_image_filename": product_with_relations.primary_image_filename

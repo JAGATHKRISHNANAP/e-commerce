@@ -16,6 +16,7 @@ class ProductBase(BaseModel):
     base_price: int = Field(..., gt=0)  # Price in cents
     stock_quantity: int = Field(default=0, ge=0)
     sku: Optional[str] = Field(None, max_length=100)
+    group_id: Optional[str] = Field(None, max_length=50)
     is_active: bool = True
 
 class ProductCreate(ProductBase):
@@ -30,11 +31,8 @@ class ProductUpdate(BaseModel):
     base_price: Optional[int] = Field(None, gt=0)
     stock_quantity: Optional[int] = Field(None, ge=0)
     sku: Optional[str] = Field(None, max_length=100)
+    group_id: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = None
-
-class VariantResponse(BaseModel):
-    product_id: int
-    specifications: Dict[str, Any]
 
 class ProductResponse(ProductBase):
     product_id: int
@@ -46,14 +44,13 @@ class ProductResponse(ProductBase):
     created_by: str
     created_at: datetime
     updated_at: datetime
-    group_id: Optional[str] = None
-    variants: List[VariantResponse] = []
     
     # These will be populated by the API if needed
     category: Optional[Dict[str, Any]] = None
     subcategory: Optional[Dict[str, Any]] = None
     
     images: List[ProductImageResponse] = []
+    variants: List[Dict[str, Any]] = []  # List of related variant products
     class Config:
         from_attributes = True
 

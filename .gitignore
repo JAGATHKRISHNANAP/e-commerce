@@ -53,3 +53,4 @@ debug_pydantic.py
 debug_query.py
 dump_products.py
 force_group_products.py
+scripts/add_group_id_migration.py

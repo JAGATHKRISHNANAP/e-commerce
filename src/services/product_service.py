@@ -196,6 +196,27 @@ class ProductService:
         if not product:
             return None
         
+        # Fetch variants (siblings with same group_id)
+        variants = []
+        if product.group_id:
+            variant_products = self.db.query(Product).filter(
+                Product.group_id == product.group_id,
+                Product.product_id != product.product_id,
+                Product.is_active == True
+            ).all()
+            
+            for vp in variant_products:
+                variants.append({
+                    "product_id": vp.product_id,
+                    "name": vp.name,
+                    "specifications": vp.specifications,
+                    "base_price": vp.base_price,
+                    "calculated_price": vp.calculated_price,
+                    "stock_quantity": vp.stock_quantity,
+                    "primary_image_url": vp.primary_image_url,
+                    # Add any other needed fields for the switcher
+                })
+
         # Convert to response format
         response_data = {
             "product_id": product.product_id,
@@ -208,6 +229,7 @@ class ProductService:
             "calculated_price": product.calculated_price,
             "stock_quantity": product.stock_quantity,
             "sku": product.sku,
+            "group_id": product.group_id,  # Add group_id
             "is_active": product.is_active,
             "created_by": product.created_by,
             "created_at": product.created_at,
@@ -242,7 +264,8 @@ class ProductService:
                     "updated_at": img.updated_at
                 }
                 for img in product.images
-            ] if product.images else []
+            ] if product.images else [],
+            "variants": variants
         }
         
         return ProductResponse(**response_data)

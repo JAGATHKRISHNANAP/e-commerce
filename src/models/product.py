@@ -32,7 +32,7 @@ class Product(Base):
     stock_quantity = Column(Integer, default=0)
     storage_capacity = Column(String(50))  # Keep for backward compatibility
     sku = Column(String(100), unique=True, nullable=True, index=True)
-    group_id = Column(String(100), index=True, nullable=True)  # Links variants together
+    group_id = Column(String(50), nullable=True, index=True)  # For grouping variants (e.g., same product, different sizes)
     created_by = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
     
