@@ -273,7 +273,7 @@ async def get_product_filters(
 @router.get("/products", response_model=ProductListResponse)
 async def get_products(
     page: int = Query(1, ge=1),
-    per_page: int = Query(10, ge=1, le=100),
+    per_page: int = Query(10, ge=1, le=1000),
     category_id: Optional[int] = Query(None, description="Category ID (integer)"),
     subcategory_id: Optional[int] = Query(None, description="Subcategory ID (integer)"),
     is_active: Optional[bool] = Query(None),
