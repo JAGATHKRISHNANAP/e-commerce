@@ -239,7 +239,8 @@ async def search_products(
     sort_by: str = Query('relevance', description="Sort by: relevance, price_low, price_high, newest, popularity"),
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(20, ge=1, le=100, description="Number of results per page"),
-    debug: bool = Query(False, description="Enable debug mode for detailed logging")
+    debug: bool = Query(False, description="Enable debug mode for detailed logging"),
+    db: Session = Depends(get_db)
 ):
     """
     Advanced product search with filters and facets
@@ -260,7 +261,7 @@ async def search_products(
         }
         
         print("\n" + "="*80)
-        print("🔍 ELASTICSEARCH SEARCH REQUEST")
+        print("🔍 SEARCH REQUEST")
         print("="*80)
         print(f"📝 Search Query: '{q}'")
         print(f"🔧 Parameters: {json.dumps(search_params, indent=2)}")
@@ -268,14 +269,67 @@ async def search_products(
         
         # Check if Elasticsearch is available
         if not ElasticsearchService.is_available():
-            print("❌ Elasticsearch is not available!")
-            print("💡 Make sure Elasticsearch is running on localhost:9200")
+            print("⚠️ Elasticsearch is not available - falling back to Database Search")
+            
+            # SQL Fallback Implementation
+            query = db.query(Product).filter(
+                (Product.name.ilike(f"%{q}%")) | 
+                (Product.description.ilike(f"%{q}%"))
+            )
+            
+            if category_id:
+                query = query.filter(Product.category_id == category_id)
+            if subcategory_id:
+                query = query.filter(Product.subcategory_id == subcategory_id)
+            if min_price:
+                query = query.filter(Product.price >= min_price)
+            if max_price:
+                query = query.filter(Product.price <= max_price)
+            if in_stock_only:
+                query = query.filter(Product.stock_quantity > 0)
+                
+            # Count total before pagination
+            total = query.count()
+            
+            # Apply sorting
+            if sort_by == 'price_low':
+                query = query.order_by(Product.price.asc())
+            elif sort_by == 'price_high':
+                query = query.order_by(Product.price.desc())
+            elif sort_by == 'newest':
+                query = query.order_by(Product.created_at.desc())
+            
+            # Apply pagination
+            products = query.offset((page - 1) * size).limit(size).all()
+            
+            # Format results
+            product_list = []
+            for p in products:
+                # Calculate effective price logic if needed, simplify for fallback
+                price = getattr(p, 'calculated_price', None) or getattr(p, 'base_price', None) or p.price
+                if price and hasattr(p, 'calculated_price') and p.calculated_price: price = price / 100
+                elif price and hasattr(p, 'base_price') and p.base_price: price = price / 100
+                
+                product_list.append({
+                    "product_id": p.product_id,
+                    "name": p.name,
+                    "description": p.description,
+                    "price": float(price) if price else 0.0,
+                    "category_name": p.category.name if p.category else None,
+                    "subcategory_name": p.subcategory.name if p.subcategory else None,
+                    "brand": None, # Complex to extract from specs in fallback
+                    "stock_quantity": p.stock_quantity,
+                    "primary_image_url": p.primary_image_url,
+                    "sku": p.sku,
+                    "score": 1.0 # Dummy score
+                })
+
             return SearchResponse(
-                products=[],
-                total=0,
+                products=product_list,
+                total=total,
                 page=page,
                 size=size,
-                total_pages=0,
+                total_pages=(total + size - 1) // size if size > 0 else 0,
                 facets={},
                 took=0
             )
@@ -365,7 +419,8 @@ async def search_products(
 @router.get("/search/suggestions")
 async def get_search_suggestions(
     q: str = Query(..., min_length=2, description="Search query (minimum 2 characters)"),
-    size: int = Query(10, ge=1, le=20, description="Number of suggestions")
+    size: int = Query(10, ge=1, le=20, description="Number of suggestions"),
+    db: Session = Depends(get_db)
 ):
     """
     Get search suggestions/autocomplete with debugging
@@ -374,8 +429,24 @@ async def get_search_suggestions(
         print(f"\n🔍 GETTING SUGGESTIONS for: '{q}'")
         
         if not ElasticsearchService.is_available():
-            print("❌ Elasticsearch not available for suggestions")
-            return {"suggestions": []}
+            print("⚠️ Elasticsearch not available - falling back to DB Suggestions")
+            
+            # SQL Fallback
+            products = db.query(Product).filter(
+                Product.name.ilike(f"%{q}%")
+            ).limit(size * 3).all()  # Fetch more to allow for deduplication
+            
+            # Deduplicate names while preserving order
+            seen = set()
+            suggestions = []
+            for p in products:
+                if p.name not in seen:
+                    seen.add(p.name)
+                    suggestions.append(p.name)
+                    if len(suggestions) >= size:
+                        break
+            
+            return {"suggestions": suggestions}
         
         suggestions = ElasticsearchService.get_search_suggestions(q, size)
         

@@ -9,6 +9,13 @@ if TYPE_CHECKING:
     from .category import CategoryResponse
     from .subcategory import SubcategoryResponse
 
+class ProductImageOnly(BaseModel):
+    primary_image_url: Optional[str] = None
+    primary_image_filename: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None

@@ -501,43 +501,7 @@
 #     return order
 
 
-# @router.patch("/orders/{order_id}/cancel")
-# async def cancel_order(
-#     order_id: int,
-#     customer: Customer = Depends(get_current_user),
-#     db: Session = Depends(get_db)
-# ):
-#     customer_id = customer.customer_id
 
-#     order = db.query(Order).filter(
-#         Order.order_id == order_id,
-#         Order.customer_id == customer_id
-#     ).first()
-
-#     if not order:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="Order not found"
-#         )
-
-#     if order.order_status in ["shipped", "delivered", "cancelled"]:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail=f"Cannot cancel order with status: {order.order_status}"
-#         )
-
-#     order.order_status = "cancelled"
-#     order.cancelled_date = datetime.now()
-
-#     order_items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
-#     for item in order_items:
-#         product = db.query(Product).filter(Product.product_id == item.product_id).first()
-#         if product:
-#             product.stock_quantity += item.quantity
-
-#     db.commit()
-
-#     return {"message": "Order cancelled successfully", "order_id": order_id}
 
 
 
@@ -683,12 +647,24 @@ async def create_order(
         })
 
     # Calculate order totals using the collected price information
+    # Calculate totals
     subtotal = sum(detail['total'] for detail in order_details)
+    
+    # Standardized Logic:
+    # 1. Discount: 15% off MRP
+    discount_rate = 0.15
+    discount_amount = subtotal * discount_rate
+    
+    # 2. Tax: 18% GST on the discounted price (actual selling price)
     tax_rate = 0.18
-    tax_amount = subtotal * tax_rate
-    shipping_amount = 0.0
-    discount_amount = 0.0
-    total_amount = subtotal + tax_amount + shipping_amount - discount_amount
+    taxable_amount = subtotal - discount_amount
+    tax_amount = taxable_amount * tax_rate
+    
+    # 3. Shipping: Free if order value (after discount) > 499, else 40
+    shipping_amount = 0.0 if taxable_amount > 499 else 40.0
+    
+    # 4. Total Amount
+    total_amount = taxable_amount + tax_amount + shipping_amount
 
     order_number = generate_order_number()
     order = Order(
@@ -749,7 +725,7 @@ async def get_customer_orders(
     offset = (page - 1) * size
 
     orders_query = db.query(Order).options(
-        joinedload(Order.order_items),
+        joinedload(Order.order_items).joinedload(OrderItem.product),
         joinedload(Order.delivery_address)
     ).filter(Order.customer_id == customer_id)
 
@@ -773,7 +749,7 @@ async def get_order(
     customer_id = customer.customer_id
 
     order = db.query(Order).options(
-        joinedload(Order.order_items),
+        joinedload(Order.order_items).joinedload(OrderItem.product),
         joinedload(Order.delivery_address)
     ).filter(
         Order.order_id == order_id,
@@ -789,7 +765,7 @@ async def get_order(
     return order
 
 
-@router.patch("/orders/{order_id}/cancel")
+@router.post("/orders/{order_id}/cancel")
 async def cancel_order(
     order_id: int,
     customer: Customer = Depends(get_current_user),
@@ -808,7 +784,7 @@ async def cancel_order(
             detail="Order not found"
         )
 
-    if order.order_status in ["shipped", "delivered", "cancelled"]:
+    if order.order_status in ["shipped", "delivered", "cancelled", "returned", "return_requested"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot cancel order with status: {order.order_status}"
@@ -817,7 +793,7 @@ async def cancel_order(
     order.order_status = "cancelled"
     order.cancelled_date = datetime.now()
 
-    # Restore stock for cancelled items
+    # Restore stock
     order_items = db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
     for item in order_items:
         product = db.query(Product).filter(Product.product_id == item.product_id).first()
@@ -827,6 +803,50 @@ async def cancel_order(
     db.commit()
 
     return {"message": "Order cancelled successfully", "order_id": order_id}
+
+
+@router.post("/orders/{order_id}/return")
+async def return_order(
+    order_id: int,
+    customer: Customer = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    customer_id = customer.customer_id
+
+    order = db.query(Order).filter(
+        Order.order_id == order_id,
+        Order.customer_id == customer_id
+    ).first()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    if order.order_status != "delivered":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only delivered orders can be returned"
+        )
+        
+    if not order.delivered_date:
+        # Fallback if delivered_date is missing but status is delivered
+        order.delivered_date = datetime.now()
+
+    # Check 9-day return window
+    current_time = datetime.now(order.delivered_date.tzinfo) if order.delivered_date.tzinfo else datetime.now()
+    delta = current_time - order.delivered_date
+    if delta.days > 9:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Return period expired (9 days limit)"
+        )
+
+    order.order_status = "return_requested"
+    db.commit()
+
+    return {"message": "Return request submitted successfully", "order_id": order_id}
 
 
 

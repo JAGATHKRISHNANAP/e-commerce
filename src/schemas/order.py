@@ -9,6 +9,8 @@ class OrderItemCreate(BaseModel):
     product_id: int
     quantity: int
 
+from src.schemas.product import ProductImageOnly
+
 class OrderItemResponse(BaseModel):
     order_item_id: int
     product_id: int
@@ -17,6 +19,7 @@ class OrderItemResponse(BaseModel):
     total_price: float
     product_name: str
     product_description: Optional[str]
+    product: Optional[ProductImageOnly] = None
     
     class Config:
         from_attributes = True
@@ -48,6 +51,7 @@ class OrderResponse(BaseModel):
     payment_method: PaymentMethod
     order_date: datetime
     estimated_delivery_date: Optional[datetime]
+    delivered_date: Optional[datetime]
     tracking_number: Optional[str]
     special_instructions: Optional[str]
     order_items: List[OrderItemResponse]

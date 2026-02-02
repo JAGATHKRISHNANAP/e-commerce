@@ -13,6 +13,7 @@ class OrderStatus(str, Enum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     RETURNED = "returned"
+    RETURN_REQUESTED = "return_requested"
 
 class PaymentStatus(str, Enum):
     PENDING = "pending"
