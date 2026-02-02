@@ -60,7 +60,7 @@ class Settings:
     db_name: str = os.getenv("DB_NAME", "e-commerce_second")
     db_user: str = os.getenv("DB_USER", "postgres")
     db_password: str = os.getenv("DB_PASSWORD", "jaTHU@12")
-    db_host: str = os.getenv("DB_HOST", "localhost")
+    db_host: str = os.getenv("DB_HOST", "65.1.248.179")
     db_port: str = os.getenv("DB_PORT", "5432")
     
     # API Configuration
