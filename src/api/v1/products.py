@@ -35,6 +35,7 @@ async def create_product(
     sku: str = Form(""),  # Default empty string
     group_id: str = Form(None), # Optional group ID
     created_by: str = Form("admin"),
+    sales_user: str = Form(None), # Added to support vendor dashboard
     is_active: str = Form("true"),  # Accept as string
     
     # File uploads - make optional
@@ -43,6 +44,7 @@ async def create_product(
     # Dependencies
     db: Session = Depends(get_db)
 ):
+
     """Create a new product with images - debug version"""
     try:
         # Log incoming data for debugging
@@ -99,7 +101,7 @@ async def create_product(
             stock_quantity=stock_quantity_int,
             sku=sku if sku.strip() else None,
             group_id=final_group_id,
-            created_by=created_by,
+            created_by=sales_user if sales_user and created_by == "admin" else created_by,
             is_active=is_active_bool
         )
         

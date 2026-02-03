@@ -11,7 +11,7 @@ class FileService:
     def __init__(self):
         self.upload_dir = "uploads"
         self.products_dir = os.path.join(self.upload_dir, "products")
-        self.base_url = "http://localhost:8000"  # Your FastAPI server URL
+        self.base_url = "http://65.1.248.179:8000"  # Your FastAPI server URL
         
         # Create directories if they don't exist
         os.makedirs(self.products_dir, exist_ok=True)
@@ -76,7 +76,7 @@ class FileService:
         await self._optimize_image(file_path)
         
         # Generate web-accessible URL
-        # This creates a URL like: http://localhost:8000/uploads/products/123/filename.jpg
+        # This creates a URL like: http://65.1.248.179:8000/uploads/products/123/filename.jpg
         relative_path = os.path.join("products", str(product_id), unique_filename)
         image_url = f"{self.base_url}/uploads/{relative_path.replace(os.sep, '/')}"
         
@@ -153,7 +153,7 @@ class FileService:
 #     def __init__(self):
 #         self.upload_dir = "uploads"
 #         self.products_dir = os.path.join(self.upload_dir, "products")
-#         self.base_url = "http://localhost:8000"  # Your FastAPI server URL
+#         self.base_url = "http://65.1.248.179:8000"  # Your FastAPI server URL
         
 #         # Create directories if they don't exist
 #         os.makedirs(self.products_dir, exist_ok=True)
@@ -218,7 +218,7 @@ class FileService:
 #         await self._optimize_image(file_path)
         
 #         # Generate web-accessible URL
-#         # This creates a URL like: http://localhost:8000/uploads/products/123/filename.jpg
+#         # This creates a URL like: http://65.1.248.179:8000/uploads/products/123/filename.jpg
 #         relative_path = os.path.join("products", str(product_id), unique_filename)
 #         image_url = f"{self.base_url}/uploads/{relative_path.replace(os.sep, '/')}"
         

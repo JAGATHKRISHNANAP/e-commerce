@@ -61,8 +61,10 @@ def create_app() -> FastAPI:
             # Don't fail startup if Elasticsearch is not available
             logger.warning("Application starting without Elasticsearch search capabilities")
 
+    
     # Include API routers
     app.include_router(vender_auth.router, prefix="/api/vendor", tags=["vender_auth"])
+    app.include_router(vendor_orders.router, prefix="/api/vendor", tags=["vendor_orders"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
     app.include_router(specifications.router, prefix="/api/v1", tags=["specifications"])
@@ -207,7 +209,7 @@ if __name__ == "__main__":
    After setup, index your existing products:
    ```bash
    # Make a POST request to reindex all products
-   curl -X POST "http://localhost:8000/api/v1/search/reindex" \
+   curl -X POST "http://65.1.248.179:8000/api/v1/search/reindex" \
         -H "Authorization: Bearer YOUR_JWT_TOKEN"
    ```
    
@@ -222,12 +224,12 @@ if __name__ == "__main__":
    
    B. Test search API:
    ```bash
-   curl "http://localhost:8000/api/v1/search?q=shirt&size=5"
+   curl "http://65.1.248.179:8000/api/v1/search?q=shirt&size=5"
    ```
    
    C. Test suggestions:
    ```bash
-   curl "http://localhost:8000/api/v1/search/suggestions?q=sh"
+   curl "http://65.1.248.179:8000/api/v1/search/suggestions?q=sh"
    ```
 
 9. ADVANCED FEATURES
