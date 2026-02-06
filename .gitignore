@@ -20,6 +20,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+media/
 
 # Environments
 .env
@@ -55,3 +56,4 @@ dump_products.py
 force_group_products.py
 scripts/add_group_id_migration.py
 create_tables.py
+

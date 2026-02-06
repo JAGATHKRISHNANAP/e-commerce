@@ -1,7 +1,8 @@
 # src/schemas/product_image.py
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime
+from config.settings import settings
 
 class ProductImageBase(BaseModel):
     image_filename: str
@@ -33,6 +34,13 @@ class ProductImageResponse(ProductImageBase):
     
     class Config:
         from_attributes = True
+
+    @field_validator('image_url')
+    @classmethod
+    def prepend_base_url(cls, v: str) -> str:
+        if v and v.startswith('/uploads/'):
+            return f"{settings.base_url.rstrip('/')}{v}"
+        return v
 
 class ProductImageListResponse(BaseModel):
     product_id: int

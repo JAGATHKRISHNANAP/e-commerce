@@ -1,3 +1,115 @@
+# # jagath  ELAKKIYA.COM
+
+# # Updated app.py - Add search router and initialize Elasticsearch
+# from fastapi import FastAPI
+# from fastapi.middleware.cors import CORSMiddleware
+# from fastapi.staticfiles import StaticFiles
+# from config.database import engine
+# from src.models import Base
+# from src.api.v1 import categories, products, auth, vender_auth, cart, addresses, orders, specifications, pricing, search, vendor_orders
+# from src.services.search import ElasticsearchService
+# import uvicorn
+# import os
+# import logging
+
+# # Set up logging
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
+# # Import all models to ensure they're registered with SQLAlchemy
+# from src.models.customer import Customer
+# from src.models.otp import OTP
+# from src.models.address import CustomerAddress
+# from src.models.order import Order, OrderItem
+
+# # Create tables
+# Base.metadata.create_all(bind=engine)
+
+# def create_app() -> FastAPI:
+#     """Create FastAPI application with all configurations"""
+    
+#     app = FastAPI(
+#         title="E-commerce API with Elasticsearch",
+#         version="2.0.0",
+#         description="A comprehensive e-commerce API with advanced search capabilities"
+#     )
+
+#     # CORS middleware
+#     app.add_middleware(
+#         CORSMiddleware,
+#         allow_origins=["http://localhost:5174", "http://localhost:5173"],
+#         allow_credentials=True,
+#         allow_methods=["*"],
+#         allow_headers=["*"],
+#     )
+
+#     # Create uploads directory if it doesn't exist
+#     os.makedirs("uploads", exist_ok=True)
+    
+#     # Mount static files for serving uploaded images
+#     app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+#     app.mount("/media", StaticFiles(directory="media"), name="media")
+
+#     # Initialize Elasticsearch on startup
+#     @app.on_event("startup")
+#     async def startup_event():
+#         try:
+#             ElasticsearchService.initialize_index()
+#             logger.info("Elasticsearch initialized successfully")
+#         except Exception as e:
+#             logger.error(f"Failed to initialize Elasticsearch: {str(e)}")
+#             # Don't fail startup if Elasticsearch is not available
+#             logger.warning("Application starting without Elasticsearch search capabilities")
+
+    
+#     # Include API routers
+#     app.include_router(vender_auth.router, prefix="/api/vendor", tags=["vender_auth"])
+#     app.include_router(vendor_orders.router, prefix="/api/vendor", tags=["vendor_orders"])
+#     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+#     app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
+#     app.include_router(specifications.router, prefix="/api/v1", tags=["specifications"])
+#     app.include_router(pricing.router, prefix="/api/v1", tags=["pricing"])
+#     app.include_router(products.router, prefix="/api/v1", tags=["products"])
+#     app.include_router(cart.router, prefix="/api/v1", tags=["cart"])
+#     app.include_router(addresses.router, prefix="/api/v1", tags=["addresses"])
+#     app.include_router(orders.router, prefix="/api/v1", tags=["orders"])
+#     app.include_router(vendor_orders.router, prefix="/api/vendor", tags=["vendor_orders"])
+#     app.include_router(search.router, prefix="/api/v1", tags=["search"])  # New search router
+
+#     @app.get("/")
+#     async def root():
+#         return {
+#             "message": "E-commerce API with Elasticsearch",
+#             "version": "2.0.0",
+#             "status": "running",
+#             "features": ["Authentication", "Products", "Cart", "Addresses", "Orders", "Advanced Search"]
+#         }
+
+#     @app.get("/health")
+#     async def health_check():
+#         # Check Elasticsearch health
+#         try:
+#             from config.elasticsearch import es_client
+#             es_health = es_client.ping()
+#         except:
+#             es_health = False
+            
+#         return {
+#             "status": "healthy",
+#             "elasticsearch": "connected" if es_health else "disconnected"
+#         }
+
+#     return app
+
+# app = create_app()
+
+# if __name__ == "__main__":
+#     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+
+
+
+
+
 # jagath  ELAKKIYA.COM
 
 # Updated app.py - Add search router and initialize Elasticsearch
@@ -25,27 +137,50 @@ from src.models.order import Order, OrderItem
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
 def create_app() -> FastAPI:
     """Create FastAPI application with all configurations"""
-    
+
     app = FastAPI(
         title="E-commerce API with Elasticsearch",
         version="2.0.0",
         description="A comprehensive e-commerce API with advanced search capabilities"
     )
 
-    # CORS middleware
+    # --- ADD PROXY HEADERS MIDDLEWARE HERE ---
+
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["127.0.0.1"])
+
+    # --- EXISTING CORS MIDDLEWARE ---
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5174", "http://localhost:5173"],
+        # Remember to update these to your actual domain for production!
+        allow_origins=[
+            "https://elakkiyaboutique.com",
+            "https://www.elakkiyaboutique.com",
+            "http://localhost:5174"
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # ... rest of your code (os.makedirs, mount, routers, etc.)
+
+
+
+
+
+
+
+
+
+
+
     # Create uploads directory if it doesn't exist
     os.makedirs("uploads", exist_ok=True)
-    
+
     # Mount static files for serving uploaded images
     app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
     app.mount("/media", StaticFiles(directory="media"), name="media")
@@ -61,10 +196,8 @@ def create_app() -> FastAPI:
             # Don't fail startup if Elasticsearch is not available
             logger.warning("Application starting without Elasticsearch search capabilities")
 
-    
     # Include API routers
     app.include_router(vender_auth.router, prefix="/api/vendor", tags=["vender_auth"])
-    app.include_router(vendor_orders.router, prefix="/api/vendor", tags=["vendor_orders"])
     app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
     app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
     app.include_router(specifications.router, prefix="/api/v1", tags=["specifications"])
@@ -93,7 +226,7 @@ def create_app() -> FastAPI:
             es_health = es_client.ping()
         except:
             es_health = False
-            
+
         return {
             "status": "healthy",
             "elasticsearch": "connected" if es_health else "disconnected"
@@ -106,6 +239,7 @@ app = create_app()
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
 
+# ==========================================
 # ==========================================
 # SETUP INSTRUCTIONS
 # ==========================================

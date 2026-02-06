@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
 from .product_image import ProductImageResponse
+from config.settings import settings
 
 # Import only for type checking
 if TYPE_CHECKING:
@@ -60,6 +61,13 @@ class ProductResponse(ProductBase):
     variants: List[Dict[str, Any]] = []  # List of related variant products
     class Config:
         from_attributes = True
+
+    @field_validator('primary_image_url')
+    @classmethod
+    def prepend_base_url(cls, v: Optional[str]) -> Optional[str]:
+        if v and v.startswith('/uploads/'):
+            return f"{settings.base_url.rstrip('/')}{v}"
+        return v
 
 class ProductListResponse(BaseModel):
     products: List[ProductResponse]
