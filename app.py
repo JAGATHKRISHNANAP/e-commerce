@@ -118,7 +118,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from config.database import engine
 from src.models import Base
-from src.api.v1 import categories, products, auth, vender_auth, cart, addresses, orders, specifications, pricing, search, vendor_orders
+from src.api.v1 import categories, products, auth, vender_auth, cart, addresses, orders, specifications, pricing, search, vendor_orders, payment
 from src.services.search import ElasticsearchService
 import uvicorn
 import os
@@ -207,7 +207,8 @@ def create_app() -> FastAPI:
     app.include_router(addresses.router, prefix="/api/v1", tags=["addresses"])
     app.include_router(orders.router, prefix="/api/v1", tags=["orders"])
     app.include_router(vendor_orders.router, prefix="/api/vendor", tags=["vendor_orders"])
-    app.include_router(search.router, prefix="/api/v1", tags=["search"])  # New search router
+    app.include_router(search.router, prefix="/api/v1", tags=["search"])
+    app.include_router(payment.router, prefix="/api/v1/payment", tags=["payment"])
 
     @app.get("/")
     async def root():

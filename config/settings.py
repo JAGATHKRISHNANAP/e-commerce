@@ -66,8 +66,8 @@ class Settings:
     # API Configuration
     api_v1_str: str = os.getenv("API_V1_STR", "/api/v1")
     project_name: str = os.getenv("PROJECT_NAME", "E-commerce API")
-    base_url: str = os.getenv("BASE_URL", "https://www.elakkiyaboutique.com")
-    
+    base_url: str = os.getenv("BASE_URL", "http://localhost:8000")
+    # https://www.elakkiyaboutique.com
     # CORS
     backend_cors_origins: list = ["http://localhost:3000", "http://localhost:5173"]
 

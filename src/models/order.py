@@ -26,6 +26,7 @@ class PaymentMethod(str, Enum):
     NETBANKING = "netbanking"
     UPI = "upi"
     COD = "cod"
+    RAZORPAY = "razorpay"
 
 class Order(Base):
     __tablename__ = "orders"

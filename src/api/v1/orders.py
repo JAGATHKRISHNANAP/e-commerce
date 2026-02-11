@@ -518,7 +518,7 @@ import secrets
 import string
 
 from config.database import get_db
-from src.models.order import Order, OrderItem
+from src.models.order import Order, OrderItem, PaymentStatus, PaymentMethod
 from src.models.product import Product
 from src.models.cart import CartItem, Cart
 from src.models.address import CustomerAddress
@@ -620,6 +620,28 @@ async def create_order(
 
     # Validate stock and collect price information
     order_details = []
+    
+    # Verify Payment if Razorpay
+    if order_data.payment_method == PaymentMethod.RAZORPAY:
+        if not all([order_data.razorpay_order_id, order_data.razorpay_payment_id, order_data.razorpay_signature]):
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing Razorpay payment details"
+            )
+        try:
+            from src.services.payment import PaymentService
+            payment_service = PaymentService()
+            payment_service.verify_payment_signature(
+                razorpay_order_id=order_data.razorpay_order_id,
+                razorpay_payment_id=order_data.razorpay_payment_id,
+                razorpay_signature=order_data.razorpay_signature
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Payment verification failed: {str(e)}"
+            )
+
     for cart_item in cart_items:
         if cart_item.product.stock_quantity < cart_item.quantity:
             raise HTTPException(
@@ -680,6 +702,11 @@ async def create_order(
         special_instructions=order_data.special_instructions,
         estimated_delivery_date=datetime.now() + timedelta(days=5)
     )
+
+    if order_data.payment_method == PaymentMethod.RAZORPAY:
+        order.payment_status = PaymentStatus.PAID
+        order.payment_reference = order_data.razorpay_payment_id
+        order.payment_gateway_response = f"order_id:{order_data.razorpay_order_id}, signature:{order_data.razorpay_signature}"
 
     db.add(order)
     db.flush()

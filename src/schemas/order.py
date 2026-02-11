@@ -35,6 +35,9 @@ class OrderCreate(BaseModel):
     payment_method: PaymentMethod
     payment_details: Optional[PaymentDetails] = None
     special_instructions: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    razorpay_signature: Optional[str] = None
 
 class OrderResponse(BaseModel):
     order_id: int
