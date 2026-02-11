@@ -62,8 +62,17 @@ class PaymentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Payment signature verification failed"
             )
-        except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error verifying payment: {str(e)}"
             )
+
+    def fetch_payment(self, payment_id: str):
+        """
+        Fetch payment details from Razorpay to identify method (upi, card, etc.)
+        """
+        try:
+            return self.client.payment.fetch(payment_id)
+        except Exception as e:
+            print(f"Error fetching payment details: {str(e)}")
+            return None

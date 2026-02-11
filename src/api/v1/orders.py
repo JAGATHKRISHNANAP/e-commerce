@@ -706,7 +706,35 @@ async def create_order(
     if order_data.payment_method == PaymentMethod.RAZORPAY:
         order.payment_status = PaymentStatus.PAID
         order.payment_reference = order_data.razorpay_payment_id
-        order.payment_gateway_response = f"order_id:{order_data.razorpay_order_id}, signature:{order_data.razorpay_signature}"
+        
+        # Fetch detailed payment info to identify UPI, Card, etc.
+        payment_details_str = ""
+        try:
+            from src.services.payment import PaymentService
+            ps = PaymentService()
+            payment_info = ps.fetch_payment(order_data.razorpay_payment_id)
+            if payment_info:
+                method = payment_info.get('method', 'unknown')
+                payment_details_str = f", Method: {method.upper()}"
+                
+                # Add extra details if available
+                if method == 'card':
+                    card_network = payment_info.get('card', {}).get('network', '')
+                    if card_network:
+                        payment_details_str += f" ({card_network})"
+                elif method == 'upi':
+                    vpa = payment_info.get('vpa', '')
+                    if vpa:
+                        payment_details_str += f" ({vpa})"
+                elif method == 'netbanking':
+                     bank = payment_info.get('bank', '')
+                     if bank:
+                         payment_details_str += f" ({bank})"
+                         
+        except Exception as e:
+            print(f"Warning: Failed to fetch detailed payment info: {e}")
+
+        order.payment_gateway_response = f"order_id:{order_data.razorpay_order_id}, signature:{order_data.razorpay_signature}{payment_details_str}"
 
     db.add(order)
     db.flush()

@@ -159,7 +159,9 @@ def create_app() -> FastAPI:
         allow_origins=[
             "https://elakkiyaboutique.com",
             "https://www.elakkiyaboutique.com",
-            "http://localhost:5174"
+            "http://localhost:5174",
+            "http://localhost:5173",
+
         ],
         allow_credentials=True,
         allow_methods=["*"],
