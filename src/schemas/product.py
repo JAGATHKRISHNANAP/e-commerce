@@ -68,7 +68,12 @@ class ProductResponse(ProductBase):
     @field_validator('primary_image_url')
     @classmethod
     def prepend_base_url(cls, v: Optional[str]) -> Optional[str]:
-        if v and v.startswith('/uploads/'):
+        if not v:
+            return v
+        # Legacy rows may have /api/uploads/... stored. Normalize first.
+        if v.startswith('/api/uploads/'):
+            v = v[4:]
+        if v.startswith('/uploads/'):
             return f"{settings.base_url.rstrip('/')}{v}"
         return v
 

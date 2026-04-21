@@ -8,7 +8,7 @@ from src.models.order import Order, OrderItem, OrderStatus
 from src.models.product import Product
 from src.models.vendor import Vendor
 from src.api.v1.vender_auth import get_current_user as get_current_vendor
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 router = APIRouter()
 
@@ -20,6 +20,15 @@ class VendorOrderItemResponse(BaseModel):
     unit_price: float
     total_price: float
     product_image: Optional[str] = None
+
+    @field_validator('product_image')
+    @classmethod
+    def normalize_image_path(cls, v: Optional[str]) -> Optional[str]:
+        # Legacy rows stored image URLs as /api/uploads/... (pre-nginx-split upload pipeline).
+        # Strip the /api prefix so the frontend can resolve /uploads/... against its origin.
+        if v and v.startswith('/api/uploads/'):
+            return v[4:]
+        return v
 
 class VendorOrderResponse(BaseModel):
     order_id: int
