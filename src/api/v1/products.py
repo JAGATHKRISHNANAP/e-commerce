@@ -7,10 +7,12 @@ from config.database import get_db
 from src.models.category import Category, Subcategory
 from src.models.product import Product
 from src.models.product_image import ProductImage
+from src.models.vendor import Vendor
 from src.schemas.product import ProductResponse, ProductListResponse
 from src.services.pricing_service import PricingService
 from src.services.file_service import FileService
 from src.services.product_service import ProductService
+from src.api.v1.vender_auth import get_current_user_optional
 import json
 import logging
 import uuid
@@ -20,6 +22,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _compute_discounted_price(product: Product) -> int:
+    """Apply discount_percent to the best-available price. Returns cents."""
+    base = product.calculated_price if product.calculated_price is not None else product.base_price
+    if base is None:
+        return 0
+    pct = product.discount_percent or 0
+    if pct <= 0:
+        return int(base)
+    return int(round(base * (100 - pct) / 100))
+
 
 # Your existing create_product endpoint remains unchanged
 @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
@@ -32,20 +46,26 @@ async def create_product(
     specifications: str = Form("{}"),  # JSON string
     base_price: str = Form(...),  # Accept as string to handle conversion
     stock_quantity: str = Form("0"),  # Accept as string to handle conversion
-    sku: str = Form(""),  # Default empty string
+    sku: str = Form(...),  # Required: vendor-entered unique Product ID
     group_id: str = Form(None), # Optional group ID
+    discount_percent: str = Form("0"),  # Vendor-entered discount 0-100
     created_by: str = Form("admin"),
     sales_user: str = Form(None), # Added to support vendor dashboard
     is_active: str = Form("true"),  # Accept as string
     
     # File uploads - make optional
     images: List[UploadFile] = File(default=[]),
-    
+
     # Dependencies
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_vendor: Optional[Vendor] = Depends(get_current_user_optional),
 ):
 
-    """Create a new product with images - debug version"""
+    """Create a new product with images - debug version.
+
+    When called with a vendor JWT, `created_by` is always overwritten with the
+    authenticated vendor's phone number so products are correctly owned.
+    """
     try:
         # Log incoming data for debugging
         logger.info(f"Creating product: {name}")
@@ -58,6 +78,11 @@ async def create_product(
             base_price_int = int(float(base_price))  # Convert to int (assuming it's in cents from frontend)
             stock_quantity_int = int(stock_quantity) if stock_quantity else 0
             is_active_bool = is_active.lower() in ('true', '1', 'yes')
+            discount_percent_int = int(float(discount_percent)) if discount_percent else 0
+            if discount_percent_int < 0 or discount_percent_int > 100:
+                raise HTTPException(status_code=400, detail="discount_percent must be between 0 and 100")
+        except HTTPException:
+            raise
         except (ValueError, TypeError) as e:
             logger.error(f"Data conversion error: {e}")
             raise HTTPException(status_code=400, detail=f"Invalid data format: {str(e)}")
@@ -81,14 +106,25 @@ async def create_product(
             logger.error(f"Subcategory {subcategory_id} not found")
             raise HTTPException(status_code=404, detail="Subcategory not found")
         
-        # Check if SKU already exists (if provided)
-        if sku and sku.strip():
-            existing_sku = db.query(Product).filter(Product.sku == sku).first()
-            if existing_sku:
-                raise HTTPException(status_code=400, detail=f"SKU '{sku}' already exists")
+        # Product ID is required and must be unique
+        sku = sku.strip() if sku else ""
+        if not sku:
+            raise HTTPException(status_code=400, detail="Product ID is required")
+        existing_sku = db.query(Product).filter(Product.sku == sku).first()
+        if existing_sku:
+            raise HTTPException(status_code=400, detail=f"Product ID '{sku}' already exists")
         
         # Handle Group ID
         final_group_id = group_id if group_id and group_id.strip() else str(uuid.uuid4())
+
+        # Resolve vendor ownership. A vendor JWT always wins over whatever the
+        # client sent in the form field.
+        if current_vendor is not None:
+            final_created_by = current_vendor.vendor_ph_no
+        elif sales_user and created_by == "admin":
+            final_created_by = sales_user
+        else:
+            final_created_by = created_by
 
         # Create product with validated data
         product = Product(
@@ -99,9 +135,10 @@ async def create_product(
             specifications=specs_dict,
             base_price=base_price_int,
             stock_quantity=stock_quantity_int,
-            sku=sku if sku.strip() else None,
+            sku=sku,
             group_id=final_group_id,
-            created_by=sales_user if sales_user and created_by == "admin" else created_by,
+            discount_percent=discount_percent_int,
+            created_by=final_created_by,
             is_active=is_active_bool
         )
         
@@ -139,7 +176,7 @@ async def create_product(
                     # Use your existing file service method
                     upload_result = await file_service.save_multiple_product_images(
                         images=valid_images,
-                        sales_user=created_by,
+                        sales_user=final_created_by,
                         product_id=product.product_id
                     )
                     
@@ -160,10 +197,10 @@ async def create_product(
                             display_order=i,
                             file_size=file_info['file_size'],
                             mime_type=file_info['mime_type'],
-                            uploaded_by=created_by
+                            uploaded_by=final_created_by
                         )
                         db.add(product_image)
-                    
+
                     # Log any failed uploads
                     if upload_result['failed_files']:
                         logger.warning(f"Failed to upload {len(upload_result['failed_files'])} files:")
@@ -209,6 +246,8 @@ async def create_product(
             "specifications": product_with_relations.specifications,
             "base_price": product_with_relations.base_price,
             "calculated_price": product_with_relations.calculated_price,
+            "discount_percent": product_with_relations.discount_percent or 0,
+            "discounted_price": _compute_discounted_price(product_with_relations),
             "stock_quantity": product_with_relations.stock_quantity,
             "sku": product_with_relations.sku,
             "is_active": product_with_relations.is_active,
@@ -228,9 +267,9 @@ async def create_product(
             "primary_image_url": product_with_relations.primary_image_url,
             "primary_image_filename": product_with_relations.primary_image_filename
         }
-        
+
         return ProductResponse(**response_data)
-        
+
     except HTTPException:
         db.rollback()
         raise
@@ -392,6 +431,8 @@ async def get_products(
                 "specifications": product.specifications,
                 "base_price": product.base_price,
                 "calculated_price": product.calculated_price,
+                "discount_percent": product.discount_percent or 0,
+                "discounted_price": _compute_discounted_price(product),
                 "stock_quantity": product.stock_quantity,
                 "sku": product.sku,
                 # "group_id": product.group_id, # Can add if needed in list view
@@ -549,19 +590,25 @@ async def update_product(
     stock_quantity: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
     group_id: Optional[str] = Form(None),
+    discount_percent: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
-    
+
     # File uploads - optional
     images: List[UploadFile] = File(default=[]),
-    
+
     # Dependencies
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_vendor: Optional[Vendor] = Depends(get_current_user_optional),
 ):
-    """Update an existing product"""
+    """Update an existing product. When called with a vendor JWT, the product
+    must be owned by that vendor (else 404 — don't leak existence)."""
     try:
         # Get existing product
         product = db.query(Product).filter(Product.product_id == product_id).first()
         if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        if current_vendor is not None and product.created_by != current_vendor.vendor_ph_no:
             raise HTTPException(status_code=404, detail="Product not found")
 
         logger.info(f"Updating product {product_id}")
@@ -592,7 +639,7 @@ async def update_product(
             if sku != product.sku:
                  existing_sku = db.query(Product).filter(Product.sku == sku).first()
                  if existing_sku:
-                     raise HTTPException(status_code=400, detail=f"SKU '{sku}' already exists")
+                     raise HTTPException(status_code=400, detail=f"Product ID '{sku}' already exists")
             product.sku = sku
             
         if group_id is not None:
@@ -613,7 +660,18 @@ async def update_product(
                 product.stock_quantity = int(stock_quantity)
             except (ValueError, TypeError):
                  raise HTTPException(status_code=400, detail="Invalid stock_quantity format")
-                 
+
+        if discount_percent is not None:
+            try:
+                dp = int(float(discount_percent))
+                if dp < 0 or dp > 100:
+                    raise HTTPException(status_code=400, detail="discount_percent must be between 0 and 100")
+                product.discount_percent = dp
+            except HTTPException:
+                raise
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid discount_percent format")
+
         if specifications is not None:
             try:
                 specs_dict = json.loads(specifications) if specifications and specifications != '{}' else {}
@@ -703,6 +761,8 @@ async def update_product(
             "specifications": product_with_relations.specifications,
             "base_price": product_with_relations.base_price,
             "calculated_price": product_with_relations.calculated_price,
+            "discount_percent": product_with_relations.discount_percent or 0,
+            "discounted_price": _compute_discounted_price(product_with_relations),
             "stock_quantity": product_with_relations.stock_quantity,
             "sku": product_with_relations.sku,
             "group_id": product_with_relations.group_id,
@@ -735,14 +795,28 @@ async def update_product(
 
 # NEW: Delete product image
 @router.delete("/products/{product_id}/images/{image_id}")
-async def delete_product_image(product_id: int, image_id: int, db: Session = Depends(get_db)):
-    """Delete a product image"""
+async def delete_product_image(
+    product_id: int,
+    image_id: int,
+    db: Session = Depends(get_db),
+    current_vendor: Optional[Vendor] = Depends(get_current_user_optional),
+):
+    """Delete a product image. When called with a vendor JWT, the parent product
+    must be owned by that vendor (else 404)."""
     try:
+        if current_vendor is not None:
+            owning_product = db.query(Product).filter(
+                Product.product_id == product_id,
+                Product.created_by == current_vendor.vendor_ph_no,
+            ).first()
+            if not owning_product:
+                raise HTTPException(status_code=404, detail="Image not found")
+
         image = db.query(ProductImage).filter(
             ProductImage.image_id == image_id,
             ProductImage.product_id == product_id
         ).first()
-        
+
         if not image:
             raise HTTPException(status_code=404, detail="Image not found")
             

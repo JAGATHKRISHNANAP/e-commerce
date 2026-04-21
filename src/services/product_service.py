@@ -212,10 +212,16 @@ class ProductService:
                     "specifications": vp.specifications,
                     "base_price": vp.base_price,
                     "calculated_price": vp.calculated_price,
+                    "discount_percent": vp.discount_percent or 0,
                     "stock_quantity": vp.stock_quantity,
                     "primary_image_url": vp.primary_image_url,
                     # Add any other needed fields for the switcher
                 })
+
+        # Compute discounted_price inline to avoid cross-module imports
+        _base = product.calculated_price if product.calculated_price is not None else product.base_price
+        _pct = product.discount_percent or 0
+        _discounted = int(round(_base * (100 - _pct) / 100)) if _base is not None else 0
 
         # Convert to response format
         response_data = {
@@ -227,6 +233,8 @@ class ProductService:
             "specifications": product.specifications,
             "base_price": product.base_price,
             "calculated_price": product.calculated_price,
+            "discount_percent": _pct,
+            "discounted_price": _discounted,
             "stock_quantity": product.stock_quantity,
             "sku": product.sku,
             "group_id": product.group_id,  # Add group_id

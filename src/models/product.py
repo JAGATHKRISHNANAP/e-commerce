@@ -20,6 +20,7 @@ class Product(Base):
     # New dynamic pricing
     base_price = Column(Integer, nullable=True)  # Base price in cents
     calculated_price = Column(Integer, nullable=True)  # Final calculated price in cents
+    discount_percent = Column(Integer, nullable=False, default=0)  # Vendor-set discount 0-100
     
     # Categories
     category_id = Column(Integer, ForeignKey("categories.category_id"), nullable=False)

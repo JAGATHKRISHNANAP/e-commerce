@@ -30,6 +30,8 @@ class VendorOrderResponse(BaseModel):
     total_amount: float # This is the order total, maybe we calculate vendor subtotal too?
     items: List[VendorOrderItemResponse]
     shipping_address: Optional[str] = None
+    payment_method: Optional[str] = None
+    payment_status: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -106,7 +108,9 @@ async def get_vendor_orders(
             status=order.order_status,
             total_amount=vendor_order_total, # Showing total for THIS vendor's items only
             items=vendor_items,
-            shipping_address=address_str
+            shipping_address=address_str,
+            payment_method=order.payment_method.value if order.payment_method else None,
+            payment_status=order.payment_status.value if order.payment_status else None,
         ))
 
     return response

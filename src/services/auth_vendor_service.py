@@ -8,13 +8,24 @@ from fastapi import HTTPException, status,UploadFile
 from src.models.vendor import Vendor as Customer
 from src.models.otp import OTP
 from src.schemas.vendor_auth import (
-    SendOTPRequest, SendOTPResponse, 
+    SendOTPRequest, SendOTPResponse,
     VerifyOTPRequest, AuthResponse,
     CompleteRegistrationRequest
 )
+from src.services.otp_service import (
+    OTPDeliveryError,
+    OTP_EXPIRY_MINUTES,
+    OTP_MAX_ATTEMPTS,
+    OTP_RESEND_COOLDOWN_SECONDS,
+    deliver_otp,
+    generate_otp,
+)
 import hashlib
+import logging
 import os
 import traceback
+
+logger = logging.getLogger(__name__)
 
 # JWT settings (move to config in production)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
@@ -25,115 +36,141 @@ class AuthVendorService:
     
     @staticmethod
     def send_otp(request: SendOTPRequest, db: Session) -> SendOTPResponse:
-        """Send OTP to phone number"""
+        """Generate a fresh OTP, persist it, and dispatch via the configured provider."""
+        email = request.email.lower()
         try:
-            # For testing, always use static OTP
-            otp_code = "123456"
-            
-            # Invalidate any existing OTPs for this phone number
+            now = datetime.utcnow()
+
+            cooldown_cutoff = now - timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS)
+            recent = db.query(OTP).filter(
+                OTP.identifier == email,
+                OTP.created_at > cooldown_cutoff,
+            ).order_by(OTP.created_at.desc()).first()
+            if recent:
+                wait = OTP_RESEND_COOLDOWN_SECONDS - int((now - recent.created_at).total_seconds())
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Please wait {max(wait, 1)} seconds before requesting another OTP",
+                )
+
+            otp_code = generate_otp()
+
             db.query(OTP).filter(
-                OTP.phone_number == request.phone_number,
+                OTP.identifier == email,
                 OTP.is_used == False
             ).update({"is_used": True})
-            
-            # Create new OTP record
+
+            expires_at = now + timedelta(minutes=OTP_EXPIRY_MINUTES)
             otp_record = OTP(
-                phone_number=request.phone_number,
+                identifier=email,
                 otp_code=otp_code,
-                expires_at=datetime.utcnow() + timedelta(minutes=10)
+                expires_at=expires_at,
             )
             db.add(otp_record)
             db.commit()
-            
-            # Generate OTP ID (hash of phone + timestamp)
+            db.refresh(otp_record)
+
+            try:
+                deliver_otp(email, otp_code, purpose="vendor login")
+            except OTPDeliveryError as delivery_error:
+                otp_record.is_used = True
+                db.commit()
+                logger.error("Vendor OTP delivery failed: %s", delivery_error)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Unable to send OTP right now. Please try again shortly.",
+                )
+
             otp_id = hashlib.md5(
-                f"{request.phone_number}{datetime.utcnow()}".encode()
+                f"{email}{otp_record.id}{otp_record.created_at.isoformat()}".encode()
             ).hexdigest()
-            
-            # In production, send SMS here
-            # sms_service.send_otp(request.phone_number, otp_code)
-            
+
             return SendOTPResponse(
                 success=True,
                 message="OTP sent successfully",
                 otp_id=otp_id,
-                expires_in=600
+                expires_in=OTP_EXPIRY_MINUTES * 60,
             )
-            
+
+        except HTTPException:
+            raise
         except Exception as e:
             db.rollback()
+            logger.exception("Failed to send vendor OTP")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to send OTP: {str(e)}"
             )
-    
+
     @staticmethod
     def verify_otp(request: VerifyOTPRequest, db: Session) -> AuthResponse:
         """Verify OTP and authenticate/register user"""
+        email = request.email.lower()
         try:
-            # Find valid OTP
-            otp_record = db.query(OTP).filter(
-                OTP.phone_number == request.phone_number,
-                OTP.otp_code == request.otp,
+            active_otp = db.query(OTP).filter(
+                OTP.identifier == email,
                 OTP.is_used == False,
-                OTP.expires_at > datetime.utcnow()
-            ).first()
-            
-            if not otp_record:
-                # Check if OTP exists but is expired or used
-                expired_otp = db.query(OTP).filter(
-                    OTP.phone_number == request.phone_number,
-                    OTP.otp_code == request.otp
-                ).first()
-                
-                if expired_otp:
-                    if expired_otp.is_used:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="This OTP has already been used"
-                        )
-                    else:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="OTP has expired. Please request a new one"
-                        )
-                else:
-                    # Increment attempts
-                    db.query(OTP).filter(
-                        OTP.phone_number == request.phone_number,
-                        OTP.is_used == False
-                    ).update({"attempts": OTP.attempts + 1})
-                    db.commit()
-                    
+            ).order_by(OTP.created_at.desc()).first()
+
+            if not active_otp:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No active OTP found. Please request a new one.",
+                )
+
+            if active_otp.expires_at <= datetime.utcnow():
+                active_otp.is_used = True
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="OTP has expired. Please request a new one",
+                )
+
+            if active_otp.attempts >= OTP_MAX_ATTEMPTS:
+                active_otp.is_used = True
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many invalid attempts. Please request a new OTP.",
+                )
+
+            if active_otp.otp_code != request.otp:
+                active_otp.attempts = (active_otp.attempts or 0) + 1
+                remaining = max(OTP_MAX_ATTEMPTS - active_otp.attempts, 0)
+                if remaining == 0:
+                    active_otp.is_used = True
+                db.commit()
+                if remaining == 0:
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Invalid OTP. Please check and try again"
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Too many invalid attempts. Please request a new OTP.",
                     )
-            
-            # Mark OTP as used
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid OTP. {remaining} attempt(s) remaining.",
+                )
+
+            otp_record = active_otp
             otp_record.is_used = True
             db.commit()
-            
-            # Check if customer exists
+
             customer = db.query(Customer).filter(
-                Customer.vendor_ph_no == request.phone_number
+                Customer.vendor_email == email
             ).first()
-            
+
             is_new_user = False
             if not customer:
-                # Create new customer with just phone number
                 customer = Customer(
-                    vendor_ph_no=request.phone_number,
-                    vendor_name=None  # Name will be added later
+                    vendor_email=email,
+                    vendor_name=None,  # Name will be added later
                 )
                 db.add(customer)
                 db.commit()
                 db.refresh(customer)
                 is_new_user = True
-            
-            # Generate JWT token
+
             access_token = AuthVendorService.create_access_token(
-                data={"sub": str(customer.vendor_id), "phone": customer.vendor_ph_no}
+                data={"sub": str(customer.vendor_id), "email": customer.vendor_email}
             )
             
             # Prepare user data
@@ -249,12 +286,16 @@ class AuthVendorService:
             if not customer:
                 raise HTTPException(status_code=404, detail="Customer not found")
 
-            if customer.vendor_ph_no != data["phone_number"]:
-                raise HTTPException(status_code=400, detail="Phone number mismatch")
+            # Email is the login key; match on it. If the form submits a different
+            # email we reject so users cannot retarget someone else's account.
+            form_email = (data.get("email") or "").lower().strip()
+            if form_email and customer.vendor_email != form_email:
+                raise HTTPException(status_code=400, detail="Email mismatch")
 
             # Update fields
             customer.vendor_name = data["name"]
-            customer.vendor_email = data.get("email")
+            # Phone is captured here during profile completion (was blank at login).
+            customer.vendor_ph_no = data.get("phone_number") or customer.vendor_ph_no
             customer.aadhar_number = data["aadhar_number"]
 
             # Updated Address Fields

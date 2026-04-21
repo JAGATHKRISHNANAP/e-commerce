@@ -62,7 +62,7 @@ class Settings:
     db_password: str = os.getenv("DB_PASSWORD", "jaTHU@12")
     db_host: str = os.getenv("DB_HOST", "localhost")
     db_port: str = os.getenv("DB_PORT", "5432")
-    
+
     # API Configuration
     api_v1_str: str = os.getenv("API_V1_STR", "/api/v1")
     project_name: str = os.getenv("PROJECT_NAME", "E-commerce API")
@@ -70,6 +70,18 @@ class Settings:
     # https://www.elakkiyaboutique.com
     # CORS
     backend_cors_origins: list = ["http://localhost:3000", "http://localhost:5173"]
+
+    # SMTP (OTP email provider). Mailpit defaults: host=localhost, port=1025, no auth, no TLS.
+    smtp_host: str = os.getenv("SMTP_HOST", "localhost")
+    smtp_port: int = int(os.getenv("SMTP_PORT", "1025"))
+    smtp_user: str = os.getenv("SMTP_USER", "")
+    smtp_password: str = os.getenv("SMTP_PASSWORD", "")
+    smtp_use_tls: bool = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
+    smtp_timeout_seconds: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
+
+    otp_email_from_address: str = os.getenv("OTP_EMAIL_FROM_ADDRESS", "no-reply@elakkiyaboutique.local")
+    otp_email_from_name: str = os.getenv("OTP_EMAIL_FROM_NAME", "Elakkiya Boutique")
+    otp_email_subject: str = os.getenv("OTP_EMAIL_SUBJECT", "Your verification code")
 
 settings = Settings()
 

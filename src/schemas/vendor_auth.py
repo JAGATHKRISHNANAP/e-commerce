@@ -5,16 +5,7 @@ from datetime import datetime
 import re
 
 class SendOTPRequest(BaseModel):
-    phone_number: str = Field(..., description="Phone number with country code")
-    country_code: str = Field(..., description="Country code like +1, +91")
-    
-    @validator('phone_number')
-    def validate_phone_number(cls, v):
-        # Remove all non-digit characters except +
-        cleaned = re.sub(r'[^\d+]', '', v)
-        if len(cleaned) < 10 or len(cleaned) > 15:
-            raise ValueError('Phone number must be between 10 and 15 digits')
-        return cleaned
+    email: EmailStr = Field(..., description="Vendor email to receive the OTP")
 
 class SendOTPResponse(BaseModel):
     success: bool
@@ -23,9 +14,9 @@ class SendOTPResponse(BaseModel):
     expires_in: int = Field(default=600, description="OTP expiry time in seconds")
 
 class VerifyOTPRequest(BaseModel):
-    phone_number: str
+    email: EmailStr
     otp: str = Field(..., min_length=6, max_length=6)
-    
+
     @validator('otp')
     def validate_otp(cls, v):
         if not v.isdigit():
@@ -33,9 +24,9 @@ class VerifyOTPRequest(BaseModel):
         return v
 
 class CompleteRegistrationRequest(BaseModel):
-    phone_number: str
+    email: EmailStr
     name: str = Field(..., min_length=2, max_length=255)
-    
+
     @validator('name')
     def validate_name(cls, v):
         if not re.match(r"^[a-zA-Z\s\-']+$", v):

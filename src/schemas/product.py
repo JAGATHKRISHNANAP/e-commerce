@@ -25,6 +25,7 @@ class ProductBase(BaseModel):
     stock_quantity: int = Field(default=0, ge=0)
     sku: Optional[str] = Field(None, max_length=100)
     group_id: Optional[str] = Field(None, max_length=50)
+    discount_percent: int = Field(default=0, ge=0, le=100)
     is_active: bool = True
 
 class ProductCreate(ProductBase):
@@ -40,6 +41,7 @@ class ProductUpdate(BaseModel):
     stock_quantity: Optional[int] = Field(None, ge=0)
     sku: Optional[str] = Field(None, max_length=100)
     group_id: Optional[str] = Field(None, max_length=50)
+    discount_percent: Optional[int] = Field(None, ge=0, le=100)
     is_active: Optional[bool] = None
 
 class ProductResponse(ProductBase):
@@ -47,6 +49,7 @@ class ProductResponse(ProductBase):
     category_id: int
     subcategory_id: int
     calculated_price: int  # Final price after applying rules
+    discounted_price: Optional[int] = None  # base/calculated minus discount_percent
     primary_image_url: Optional[str] = None
     primary_image_filename: Optional[str] = None
     created_by: str

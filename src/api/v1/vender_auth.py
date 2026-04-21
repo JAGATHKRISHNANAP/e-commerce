@@ -81,16 +81,32 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+
+def get_current_user_optional(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+) -> Optional[Customer]:
+    """Like get_current_user, but returns None when the header is missing or invalid.
+    Used by endpoints that accept both authenticated vendors and anonymous callers
+    (e.g. customer-facing product reads) so we can derive vendor identity from the JWT
+    when present without 401-ing everyone else."""
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization=authorization, db=db)
+    except HTTPException:
+        return None
+
+
 @router.post("/auth/send-otp", response_model=SendOTPResponse)
 async def send_otp(
     request: SendOTPRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Send OTP to the provided phone number.
-    
-    For testing purposes, the OTP is always '123456'.
-    In production, this would integrate with an SMS service.
+    Send an OTP to the provided vendor email via the configured provider
+    (set OTP_PROVIDER=email with SMTP_* env vars, or leave as 'console'
+    to print the OTP to server logs for local development).
     """
     return AuthVendorService.send_otp(request, db)
 
@@ -100,9 +116,9 @@ async def verify_otp(
     db: Session = Depends(get_db)
 ):
     """
-    Verify OTP and authenticate the user.
-    
-    If the phone number is new, a customer record is created without a name.
+    Verify OTP and authenticate the vendor.
+
+    If the email is new, a vendor record is created without a name.
     The frontend should check is_new_user flag and prompt for name if true.
     """
     return AuthVendorService.verify_otp(request, db)

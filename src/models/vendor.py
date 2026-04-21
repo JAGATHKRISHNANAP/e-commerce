@@ -9,10 +9,12 @@ class Vendor(Base):
     __tablename__ = "vendors"
 
     vendor_id = Column(Integer, primary_key=True, index=True)
-    vendor_ph_no = Column(String(20), unique=True, nullable=False, index=True)
+    vendor_email = Column(String(255), unique=True, nullable=False, index=True)
+    # Nullable while SMS is dormant (login is now email-only); stays unique so
+    # SMS can be re-enabled later without a schema change.
+    vendor_ph_no = Column(String(20), unique=True, nullable=True, index=True)
     vendor_name = Column(String(255), nullable=True)
     date_of_registration = Column(DateTime, default=datetime.utcnow, nullable=False)
-    vendor_email = Column(String, nullable=True)
     aadhar_number = Column(String(12), nullable=True)
 
     address_line1 = Column(String, nullable=True)

@@ -426,15 +426,24 @@ class CartService:
     
     @staticmethod
     def _get_product_price(product: Product) -> Decimal:
-        """Get the effective price for a product, handling the new pricing structure"""
+        """Get the effective price for a product, handling the new pricing structure.
+
+        Applies vendor-set `discount_percent` so the cart snapshot (and downstream
+        order total) reflects what the customer saw on the product page.
+        """
         if product.calculated_price is not None:
-            return Decimal(str(product.calculated_price)) / Decimal('100')  # Convert cents to dollars
+            price = Decimal(str(product.calculated_price)) / Decimal('100')  # cents → rupees
         elif product.base_price is not None:
-            return Decimal(str(product.base_price)) / Decimal('100')  # Convert cents to dollars
+            price = Decimal(str(product.base_price)) / Decimal('100')
         elif product.price is not None:
-            return product.price
+            price = product.price
         else:
             raise ValueError(f"Product {product.product_id} has no price set")
+
+        pct = getattr(product, 'discount_percent', 0) or 0
+        if pct > 0:
+            price = (price * Decimal(100 - pct)) / Decimal(100)
+        return price
     
     @staticmethod
     def get_or_create_cart(customer_id: int, db: Session) -> Cart:
