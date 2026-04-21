@@ -68,8 +68,11 @@ def create_app() -> FastAPI:
 
 
 
-    # Create uploads directory if it doesn't exist
+    # Create static-served directories if they don't exist (startup would crash otherwise)
     os.makedirs("uploads", exist_ok=True)
+    os.makedirs("uploads/products", exist_ok=True)
+    os.makedirs("uploads/vendor_photos", exist_ok=True)
+    os.makedirs("media", exist_ok=True)
 
     # Mount static files for serving uploaded images
     app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -98,7 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(orders.router, prefix="/api/v1", tags=["orders"])
     app.include_router(vendor_orders.router, prefix="/api/vendor", tags=["vendor_orders"])
     app.include_router(vendor_products.router, prefix="/api/vendor", tags=["vendor_products"])
-    app.include_router(vendor_analytics.router, prefix="/api/analytics", tags=["vendor_analytics"])
+    app.include_router(vendor_analytics.router, prefix="/api/vendor/analytics", tags=["vendor_analytics"])
     app.include_router(search.router, prefix="/api/v1", tags=["search"])
     app.include_router(payment.router, prefix="/api/v1/payment", tags=["payment"])
 

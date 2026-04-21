@@ -94,7 +94,7 @@ class VendorSummaryResponse(BaseModel):
     recent_orders: List[RecentOrderItem]
 
 
-@router.get('/vendor/summary', response_model=VendorSummaryResponse)
+@router.get('/summary', response_model=VendorSummaryResponse)
 def get_vendor_summary(
     current_vendor: Vendor = Depends(get_current_vendor),
     db: Session = Depends(get_db),

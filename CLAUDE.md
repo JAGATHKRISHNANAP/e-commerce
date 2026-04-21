@@ -23,12 +23,14 @@ No test runner is configured — `tests/` is empty. Ad-hoc debug utilities live 
 
 Router prefixes are set in `app.include_router(...)` calls, **not** in the router modules. Current map:
 
+Two namespaces only: `/api/v1` for customer, `/api/vendor` for vendor.
+
 | Prefix | Router file |
 |---|---|
 | `/api/v1` | `auth`, `categories`, `specifications`, `pricing`, `products`, `cart`, `addresses`, `orders`, `search` |
 | `/api/v1/payment` | `payment` (Razorpay) |
-| `/api/vendor` | `vender_auth`, `vendor_orders` |
-| `/api/analytics` | `vendor_analytics` |
+| `/api/vendor` | `vender_auth`, `vendor_orders`, `vendor_products` |
+| `/api/vendor/analytics` | `vendor_analytics` (dashboard summary + 3Avision SSO) |
 
 **Spelling:** `vender_auth` (not "vendor") — the file, router variable, and URL prefix use this spelling consistently. Do not "fix" unless you also update the vendor frontend's auth endpoints.
 
